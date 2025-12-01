@@ -1,0 +1,1925 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Exam Study App - Final Fix</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        /* Style for multi-select options */
+        .multi-select-option {
+            background-color: white;
+            transition: all 0.1s;
+        }
+        /* Style applied when the user selects an option */
+        .multi-select-option.selected {
+            background-color: #e0f2f1; /* Light Teal for selection */
+            border-color: #00897b; /* Darker Teal border */
+            box-shadow: 0 0 0 2px #00897b;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 min-h-screen flex flex-col items-center py-8 px-4">
+
+    <div id="error-box" class="hidden w-full max-w-3xl bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4">
+        <strong class="font-bold">System Error:</strong>
+        <span class="block sm:inline" id="error-message"></span>
+    </div>
+
+    <div class="w-full max-w-3xl bg-white shadow-xl rounded-xl overflow-hidden border border-gray-200">
+        
+        <div class="bg-slate-800 p-6 text-white">
+            <h1 class="text-2xl font-bold mb-4">Exam Study Bank</h1>
+            
+            <div class="flex flex-col sm:flex-row gap-4 justify-between items-center">
+                <div class="w-full sm:w-1/2">
+                    <label class="block text-xs uppercase tracking-wide text-gray-400 mb-1">Select Chapter</label>
+                    <select id="chapterSelect" class="w-full bg-slate-700 text-white border border-slate-600 rounded p-2 focus:outline-none focus:border-blue-400 transition">
+                        </select>
+                </div>
+
+                <div class="flex gap-2">
+                    <button onclick="app.resetChapter()" class="text-xs bg-slate-600 hover:bg-slate-500 px-3 py-2 rounded transition">Restart Chapter</button>
+                    <button id="remediateBtn" onclick="app.startRemediation()" class="hidden text-xs bg-orange-600 hover:bg-orange-500 px-3 py-2 rounded transition font-bold">Start Remediation</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-gray-100 p-4 border-b border-gray-200 grid grid-cols-3 gap-4 text-center text-sm font-semibold">
+            <div class="text-gray-600">Remaining: <span id="remainingCount" class="text-lg block text-black">0</span></div>
+            <div class="text-green-600">Correct: <span id="correctCount" class="text-lg block">0</span></div>
+            <div class="text-red-600">Incorrect: <span id="wrongCount" class="text-lg block">0</span></div>
+        </div>
+        
+        <div class="w-full bg-gray-200 h-2">
+            <div id="progressBar" class="bg-blue-600 h-2 transition-all duration-300" style="width: 0%"></div>
+        </div>
+
+        <div id="quizArea" class="p-6 sm:p-8">
+            <div id="modeIndicator" class="hidden mb-4 inline-block px-3 py-1 rounded-full text-xs font-bold bg-orange-100 text-orange-800 border border-orange-200">
+                REMEDIATION MODE
+            </div>
+
+            <h2 id="questionText" class="text-xl font-medium mb-6 text-gray-900 leading-relaxed">
+                </h2>
+
+            <div id="optionsContainer" class="space-y-3">
+                </div>
+
+            <button id="submitMultiSelectBtn" onclick="app.submitAnswer()" class="hidden mt-6 bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-6 rounded shadow-md transition w-full sm:w-auto">
+                Submit Answer
+            </button>
+
+            <div id="feedbackArea" class="hidden mt-6 p-4 rounded-lg border bg-gray-50 fade-in">
+                <div id="feedbackTitle" class="font-bold text-lg mb-2"></div>
+                <p class="text-sm font-semibold text-gray-500 uppercase mb-1">Rationale:</p>
+                <p id="rationaleText" class="text-gray-700 leading-relaxed"></p>
+                
+                <button id="nextBtn" onclick="app.nextQuestion()" class="mt-4 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-6 rounded shadow-md transition w-full sm:w-auto">
+                    Next Question
+                </button>
+            </div>
+        </div>
+
+        <div id="endScreen" class="hidden p-10 text-center">
+            <h2 class="text-3xl font-bold mb-4 text-gray-800">Chapter Complete!</h2>
+            <p class="text-gray-600 mb-6">You have finished all questions in this set.</p>
+            <div class="flex justify-center gap-4">
+                <button onclick="app.resetChapter()" class="bg-gray-600 text-white py-2 px-6 rounded hover:bg-gray-700 transition">Start Over</button>
+                <button id="endRemediateBtn" onclick="app.startRemediation()" class="bg-orange-600 text-white py-2 px-6 rounded hover:bg-orange-700 transition shadow-lg hidden">Retry Incorrect Questions</button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+    // Global Error Handler to catch syntax errors
+    window.onerror = function(message, source, lineno, colno, error) {
+        document.getElementById('error-box').classList.remove('hidden');
+        document.getElementById('error-message').innerText = message + " (Line: " + lineno + ")";
+    };
+
+    const allChapters = {
+        "Chapter 10": [
+            {
+                id: 1,
+                question: `The graduate nurse tells the preceptor that the newly admitted patient has a strange living arrangement. The patient lives in a household that consists of two aunts, a grandparent, a niece, a nephew, and their best friend. Which response by the preceptor is best?`,
+                options: [`You are correct. That is a different type of household.`, `That is an example of a family defined by a different culture.`, `This is considered an extended family, which is not unusual.`, `This type of blended family is statistically shown to be increasing.`],
+                correctIndex: 2,
+                rationale: `The description fits the definition for an extended family, which can consist of various biological relatives and also nonrelatives who live together or in close proximity.`
+            },
+            {
+                id: 2,
+                question: `An older adult patient is admitted to the hospital with heart failure. The patient's best friend is present during admission. The two have shared a home since they were widowed 3 years ago. Both have grown children who live out of state. Which family nursing approach does the nurse use?`,
+                options: [`Involve the friend in the care, discharge planning, and home care.`, `Encourage the friend to wait until discharge to provide care for the patient at home.`, `Explain to the friend an inability to be involved in patient care for confidentiality reasons.`, `Encourage liberal visiting hours by the friend and the patient's children.`],
+                correctIndex: 0,
+                rationale: `The nurse can best intervene by involving the friend in the patient's care, discharge planning, and home care.`
+            },
+            {
+                id: 3,
+                question: `The nurse is providing care for a patient diagnosed with lung cancer. The patient and the spouse are 2 years from retirement. However, which typical stage of family development is this couple likely experiencing?`,
+                options: [`Family launching young adults`, `Postparental family`, `Family with frail elderly`, `Family with teenagers and young adults`],
+                correctIndex: 1,
+                rationale: `This couple is most likely experiencing the postparental stage of family development. During this stage, the parents prepare for retirement and adjust to their children moving into phases of adulthood.`
+            },
+            {
+                id: 4,
+                question: `A nurse is providing care for a patient newly diagnosed with type 1 diabetes mellitus. The patient's spouse states, 'We are a family of diabetics.' The nurse advises attendance to the free nutrition, cooking, and exercise classes at the health center near their neighborhood. The nurse also provides the name of the public health nurse for their area. Which perspective of family nursing is the nurse practicing?`,
+                options: [`Family as a unit of care`, `Family as a system`, `Family as the context of care`, `Family as a resource and stressor`],
+                correctIndex: 1,
+                rationale: `The nurse is viewing the family as a system because the nurse is providing information based on the spouse's response that will benefit the entire family. A system approach looks beyond the immediate family and views the community and its resources as a part of the suprasystem.`
+            },
+            {
+                id: 5,
+                question: `The parents of three children, aged 3, 6, and 8 years, comment that although the children are close in age, they each seem to have different needs. The nurse teaches the parents what tasks the children should accomplish based on the different age groups and provide strategies to help meet the children's needs. Which theory best explains the nurse's teaching plan?`,
+                options: [`General systems theory`, `Family interactional theory`, `Family as a context theory`, `Developmental theory`],
+                correctIndex: 3,
+                rationale: `Developmental theories focus on the stage of development of each family member, usually based on age or growth stage. Each child will have different developmental tasks based on their age.`
+            },
+            {
+                id: 6,
+                question: `The nurse is aware that which situation best depicts a midlife crisis?`,
+                options: [`A college graduate moves in with parents because of an inability to find employment.`, `Parents enroll their two toddlers in daycare because two incomes are needed to meet the household's financial demands.`, `After the couple's daughter leaves for college, the husband quits his job and decides to 'see the world.'`, `An older adult widower rejects the children's advice to move into an assisted-living facility.`],
+                correctIndex: 2,
+                rationale: `The middle-aged years occur after the demands of raising children are over. It can be a time of intense questioning about the meaning of life, longing for one's youth, and seeking direction in life.`
+            },
+            {
+                id: 7,
+                question: `To prevent a reduction in herd immunity, which information does the nurse teach in a class of pregnant women?`,
+                options: [`You should increase your intake of milk to meet your growing calcium needs.`, `It is important to take prenatal vitamins daily to provide the essential vitamins and minerals your body needs.`, `You should ensure your child gets immunizations at the recommended scheduled times.`, `You should limit the time your child is in crowded environments for the first 6 months of life.`],
+                correctIndex: 2,
+                rationale: `A reduction in herd immunity occurs when families do not follow the immunization schedule. Old diseases, once thought eradicated, begin to reappear.`
+            },
+            {
+                id: 8,
+                question: `For which patient in the emergency room is it most important that the nurse conduct a thorough assessment for abuse and neglect?`,
+                options: [`A 6-year-old male with complaints of abdominal pain`, `A 2-year-old male with injuries from a fall`, `A 7-year-old female with a broken arm from a motor vehicle accident`, `A 4-year-old female who complains of an earache`],
+                correctIndex: 1,
+                rationale: `The younger the child, the more vulnerable they are to abuse owing to their dependency, small size, and inability to defend themselves. The 2-year-old child is the youngest and the injuries are from a fall.`
+            },
+            {
+                id: 9,
+                question: `The nurse on a medical-surgical unit is providing care for a patient with diabetes mellitus. During a teaching session with the patient and the family, the nurse asks questions regarding care at home, ability to perform blood glucose testing, and administration of insulin. Which perspective of family nursing is the nurse providing?`,
+                options: [`Family as context for care`, `Family as a unit of care`, `Family as a system`, `A blend of all of the above`],
+                correctIndex: 0,
+                rationale: `The nurse is using family as the context for care. In this approach, the focus is on the ill individual, and family is viewed as either a resource or a stressor to the patient.`
+            },
+            {
+                id: 10,
+                question: `The nurse is participating in a family conference regarding one of the patients on the geriatric unit. During the conference, each family member is asked about their role in the family, communication style, coping strategies, and relationship with other family members. This type of family conference best illustrates the use of which theory related to family care?`,
+                options: [`General systems theory`, `Structural-functional theory`, `Family interactional theory`, `Developmental theory`],
+                correctIndex: 2,
+                rationale: `Family interactional theory views the family as a unit of interacting personalities. The focus is on interaction, communication roles and power, family coping, and relationships.`
+            },
+            {
+                id: 11,
+                question: `The grown child of an older adult patient tells the nurse, 'I'm starting to worry about my father's eating habits. He lives alone and has been able to cook, but now he doesn't want to cook and says he is too tired to go to the store.' Which is the most appropriate response by the nurse?`,
+                options: [`We may need to contact the physician for a nutritional assessment.`, `Your family members will need to get together and bring him meals.`, `It may be time for you to think about nursing home placement.`, `What are your feelings on using some community resources for meals?`],
+                correctIndex: 3,
+                rationale: `Maintaining good nutrition and hydration becomes more difficult as a person ages. It is best to offer/educate the family on outside community resources for meals (like Meals on Wheels).`
+            },
+            {
+                id: 12,
+                question: `The Americans With Disabilities Act (ADA) defines a disability as a physical or mental impairment that substantially interferes with a person's ability to engage in major life activities. Among the various disabilities in the United States, which is the most prevalent?`,
+                options: [`Vision`, `Hearing`, `Ambulation`, `Learning`],
+                correctIndex: 2,
+                rationale: `Among the various types of disabilities, 10.2 million are people with ambulatory disabilities, making it the most prevalent in this context.`
+            },
+            {
+                id: 13,
+                question: `According to Maslow's hierarchy of needs, which is the nurse's primary focus in caring for a homeless family?`,
+                options: [`Food and shelter`, `Access to healthcare`, `Strengthening family relationships`, `Decreasing social isolation`],
+                correctIndex: 0,
+                rationale: `The primary focus is on meeting basic needs of food and shelter, which, according to Maslow, must be met before the family can grow and address other areas.`
+            },
+            {
+                id: 14,
+                question: `The nurse is developing a teaching plan about coping strategies for an extended family of a severely disabled 11-year-old child. Which step does the nurse take first in developing this plan?`,
+                options: [`Assess the current coping patterns.`, `Establish each member's role.`, `Assign specific tasks and deadlines for each member.`, `Identify the family member with the most ineffective coping patterns.`],
+                correctIndex: 0,
+                rationale: `Assessing family coping is the first step to helping the family develop more effective coping patterns.`
+            },
+            {
+                id: 15,
+                question: `The nurse schedules a meeting with a family to assess and assist with improving the family's communication patterns. Which is of primary importance for the nurse to focus on during the assessment?`,
+                options: [`Identifying how family decisions are made`, `Documenting the number of family members attending the meeting`, `Assessing for the most frequently used means of communication among family members`, `Making careful observations of body language and nonverbal expressions during the meeting`],
+                correctIndex: 3,
+                rationale: `Families usually want to 'put on the best face,' so they may be careful to give socially desirable responses. The nurse should carefully observe body language, direct eye contact, and other nonverbal expressions.`
+            },
+            {
+                id: 16,
+                question: `The nurse is providing care for a seriously ill child in the pediatric unit. Many family members are present. The nurse tells the manager, 'Every time I go into the room, everyone is shouting at each other, they shout at me, and they ask me the same questions over and over.' Which is the most appropriate response by the nurse?`,
+                options: [`This is unacceptable and disruptive behavior. Tell them if the behavior continues, we may need to call security.`, `Families experience a range of emotions when caring for an ill member, and these can be normal reactions. Don't take it personally.`, `There may be too many people in the room. You might consider limiting the number of visitors at a time.`, `I know about this family's culture and expect this behavior. Don't worry about it. It is just the way they are.`],
+                correctIndex: 1,
+                rationale: `Family members experience a range of emotions and may display signs of stress (arguing, being critical, repeating questions). These are normal reactions; do not take them personally.`
+            },
+            {
+                id: 17,
+                question: `The nurse is working with a spouse who is caring for a chronically ill patient who requires around-the-clock care. The nurse notices the spouse often speaks to the patient sharply, bed linens are soiled, and both are unkempt. The spouse says, 'I just drag around. I can't make myself do anything. I'm so tired of it all.' Which nursing diagnosis best fits these defining characteristics?`,
+                options: [`Dysfunctional family processes`, `Caregiver role strain`, `Defensive coping`, `Impaired verbal communication`],
+                correctIndex: 1,
+                rationale: `The defining characteristics (speaking sharply, soiled linens, depressive symptoms) best fit a nursing diagnosis of caregiver role strain.`
+            },
+            {
+                id: 18,
+                question: `Which family functions are outlined in the structural-functional family theory? Select all that apply.`,
+                options: [`Meeting the emotional needs of family members`, `Reinforcing ethical and moral values`, `Promoting joint decision making among parents and children`, `Being a productive member of society`, `Possessing certain features common to small groups`],
+                correctIndex: [0, 3, 4],
+                rationale: `Structural-functional family theory outlines meeting emotional needs, being productive members of society, and possessing features common to small groups. Reinforcing values and joint decision making are developmental tasks.`
+            },
+            {
+                id: 19,
+                question: `The nurse is conducting a family assessment. Which assessment findings suggest a family health problem may exist? Select all that apply.`,
+                options: [`Family members respect each other's need for privacy.`, `Family members enact decisions made by the most powerful member.`, `Family members consider a conflict resolved when everyone agrees.`, `Family members set boundaries between family members.`, `Family members seem unaffected by an unkept environment.`],
+                correctIndex: [1, 2, 4],
+                rationale: `Healthy families usually share power (not one powerful member), allow for disagreement/compromise (not forced agreement), and maintain their environment.`
+            },
+            {
+                id: 20,
+                question: `The nurse is aware a family assessment includes which areas? Select all that apply.`,
+                options: [`Coping patterns`, `Health beliefs`, `Medical history`, `Physical examination`, `Medication information`],
+                correctIndex: [0, 1],
+                rationale: `Family assessment focuses on the unit (coping patterns, health beliefs). Medical history, physical exams, and meds are relevant to individual assessments unless they affect the whole family.`
+            },
+            {
+                id: 21,
+                question: `The nurse is aware that homelessness is a growing problem in the United States. The nurse is aware of which primary causes of homelessness? Select all that apply.`,
+                options: [`Lack of job skills`, `Lack of social skills`, `Underlying mental illness`, `Substance abuse`, `Loss of a job`],
+                correctIndex: [0, 1, 2, 3, 4],
+                rationale: `Lack of job skills, lack of social skills, mental illness, substance abuse, and job loss are all primary causes of homelessness.`
+            },
+            {
+                id: 22,
+                question: `In which manner are genomics and the use of a genogram helpful to the nurse in personalizing a patient plan of care? Select all that apply.`,
+                options: [`Assists in development of better preventative care by identifying at-risk individuals`, `Helps to more accurately detect illness, even before symptoms appear`, `Provides insight to how people respond differently to specific drugs and treatments`, `Increases the trust a patient and family have in the healthcare professionals`, `Prevents a disease-related crisis from developing for patients and families`],
+                correctIndex: [0, 1, 2],
+                rationale: `Genomics helps identify at-risk individuals for preventative care, detects illness early, and provides insight into drug responses. It does not necessarily increase trust or prevent crises.`
+            },
+            {
+                id: 23,
+                question: `A young adult couple with two children tells the nurse they are struggling with raising them... The nurse arrives at a nursing diagnosis of family processes: readiness for enhanced parenting. Which nursing interventions are most appropriate for this family? Select all that apply.`,
+                options: [`Collaborate with the couple in problem-solving and decision making.`, `Assign specific roles to each member of the couple's extended family.`, `Encourage the couple to verbalize concerns, fears, and perceptions.`, `Obtain a comprehensive family health assessment from each parent.`, `Promote adaptability, ability to deal with stress, and an openness to change.`],
+                correctIndex: [0, 2, 4],
+                rationale: `Appropriate interventions include collaboration, encouraging verbalization of concerns, and promoting adaptability. Roles should not be assigned by the nurse, and a comprehensive health history is not indicated without specific health issues.`
+            }
+        ],
+        "Chapter 11": [
+            {
+                id: 1,
+                question: `An adult patient is admitted for observation after sustaining injuries in a motor vehicle accident. The nurse understands that cultural beliefs may affect beliefs and behaviors related to health. Which observation by the nurse is an indication for the nurse to assess the patient's injuries?`,
+                options: [`The patient discusses the taboos against narcotic use to relieve pain.`, `The patient reports immediate relief of pain.`, `The patient endures pain longer and reports it less frequently.`, `The patient requests herbal teas to manage the pain.`],
+                correctIndex: 2,
+                rationale: `Certain cultures may endure pain longer and report it less frequently than will some other patients. This is an observation by the nurse, whereas the other options are statements or requests by the patient.`
+            },
+            {
+                id: 2,
+                question: `The nurse understands the terms related to culture. Which behavior is defined as a practice?`,
+                options: [`Always drinking water after exercise`, `Thinking often about cleanliness`, `Placing an emphasis on success`, `Maintaining youth`],
+                correctIndex: 0,
+                rationale: `A practice is a set of behaviors that one follows, such as always drinking water after exercise. Cleanliness, success, and maintaining youth are examples of values.`
+            },
+            {
+                id: 3,
+                question: `The nurse is providing care for a patient who is Cuban American. Which information about the patient will enable the nurse to best care for this patient?`,
+                options: [`The nurse understands practices of the patient's ethnic group.`, `The nurse understands the patient's individual cultural beliefs.`, `The nurse understands their own cultural values.`, `The nurse has an understanding of the patient's cultural language.`],
+                correctIndex: 1,
+                rationale: `The nurse cares for this patient by becoming familiar with their individual cultural and ethnic beliefs and values. While understanding the ethnic group is helpful, the nurse should not assume the individual holds the same values.`
+            },
+            {
+                id: 4,
+                question: `The nurse is teaching a clinic patient about hypertension. Which statement by the patient indicates they are present-oriented?`,
+                options: [`I know I need to lose weight. I'll have to begin an exercise program right away.`, `If I change my diet and begin exercising, maybe I can control my blood pressure without medications.`, `I know I need to give up foods that contain a lot of salt, but with teenagers in the house it is very difficult.`, `I will reduce the amount of calories, salt, and fat that I eat. I certainly do not want to have a stroke.`],
+                correctIndex: 2,
+                rationale: `Knowing an action is needed but giving reasons for not beginning it 'just now' shows a focus on the present. The patient disregards the impact consuming sodium might have on future health due to a present situation.`
+            },
+            {
+                id: 5,
+                question: `A nurse is caring for a patient who avoids asking for narcotics for pain. Which of the following statements by the nurse indicates an understanding of cultural archetype?`,
+                options: [`The patient refuses to acknowledge pain.`, `The patient denies pain.`, `The patient believes in using herbal teas for pain.`, `The patient's cultural beliefs indicate how to deal with pain.`],
+                correctIndex: 3,
+                rationale: `The nurse is using an understanding of cultural archetype to define the patient's reluctance to ask for pain medication. Each person is unique and influenced by heritage but not defined by it.`
+            },
+            {
+                id: 6,
+                question: `The nurse is developing a plan of care for a patient who sustained a hip fracture. Which intervention by the nurse indicates the nurse's understanding of the patient's indigenous healthcare system and should be included in the plan of care?`,
+                options: [`Asking the family to bring in medals and amulets`, `Allowing the patient to discuss their traditional healing methods`, `Providing the patient with a favorite herbal tea`, `Requesting a consult from the patient's acupuncturist`],
+                correctIndex: 1,
+                rationale: `The indigenous healthcare system consists of folk medicine and traditional healing methods. It is best to allow the patient to discuss their traditional healing methods.`
+            },
+            {
+                id: 7,
+                question: `The nurse is aware a patient incorporates alternative healthcare into regular health practices. For which alternative therapy is the nurse aware that the patient visits a formally trained practitioner?`,
+                options: [`Use of herbs and roots`, `Application of oils and poultices`, `Burning of dried plants`, `Acupuncture`],
+                correctIndex: 3,
+                rationale: `The nurse is aware acupuncture requires a formally trained practitioner, specifically because the process is invasive. The other options generally do not require formally trained practitioners.`
+            },
+            {
+                id: 8,
+                question: `A female patient informs the charge nurse that she wants a change in the nurse providing her care. The patient states, 'I don't want a man taking care of me.' Which cultural barrier is this patient exhibiting?`,
+                options: [`Ethnocentrism`, `Racism`, `Prejudice`, `Chauvinism`],
+                correctIndex: 2,
+                rationale: `This patient is exhibiting prejudice; she is objecting to the nurse merely because of his sex. Although this may reflect a cultural attitude, her preferences should be respected in this context.`
+            },
+            {
+                id: 9,
+                question: `The nurse is providing care to a patient who had surgery 8 hours ago and has not voided. The physician has prescribed an indwelling urinary catheter be inserted. Which of the following statements should the nurse use to describe the procedure to the patient?`,
+                options: [`I will insert a Foley in you because you haven't voided since your surgery.`, `I will insert a tube into your bladder to drain the urine because you haven't urinated since your surgery.`, `The physician has prescribed catheterization because you haven't urinated since your surgery.`, `I need to place a catheter in your bladder because you haven't voided since your surgery.`],
+                correctIndex: 1,
+                rationale: `'I will insert a tube into your bladder to drain the urine' best describes the procedure because the explanation is in terms most patients will understand, avoiding jargon like 'Foley' or 'catheterization'.`
+            },
+            {
+                id: 10,
+                question: `Which statement by the nurse indicates an understanding of cultural competency?`,
+                options: [`Can you tell me about your cultural practices?`, `Do you understand how we do things here in the United States?`, `What matters most to you about your illness and treatment?`, `Can you please provide me a list of your cultural preferences?`],
+                correctIndex: 2,
+                rationale: `If there were only one intervention to use, it should be to routinely ask patients what matters most to them. From there, the nurse can incorporate cultural needs into the care plan.`
+            },
+            {
+                id: 11,
+                question: `As part of the nurse's cultural assessment, which question is most appropriate for the nurse to ask prior to documenting the patient's race?`,
+                options: [`How long have you lived in the United States?`, `Can you tell me a little about your background?`, `What race do you identify with and what name do you prefer to use for it?`, `Which country are you from?`],
+                correctIndex: 2,
+                rationale: `For a culturally sensitive nurse, it is most appropriate to ask the patient what race the patient identifies with and what name they prefer to use for it, rather than making assumptions.`
+            },
+            {
+                id: 12,
+                question: `At a clinical post-conference, a nursing student states, 'I had a Chinese American patient today, and while I understand some of their cultural practices, they should follow our practices because we use scientific evidence.' Which cultural barrier is the student demonstrating?`,
+                options: [`Racism`, `Archetyping`, `Ethnocentrism`, `Stereotyping`],
+                correctIndex: 2,
+                rationale: `Ethnocentrism is the tendency to think that a person's own group is superior to others and to view differing beliefs as wrong or unenlightened.`
+            },
+            {
+                id: 13,
+                question: `Vulnerable populations are those most likely to develop health problems and experience poorer outcomes. Which is most important for the nurse to focus on when caring for a patient from a vulnerable group?`,
+                options: [`Identify the need for a referral to a social worker.`, `Identify the interactions between family members in planning care.`, `Identify the patient's difficulties and risks.`, `Identify the patient's strengths and resources.`],
+                correctIndex: 3,
+                rationale: `When caring for patients from vulnerable groups, it is most important that the focus be on the patient's strengths and resources, rather than just risks or difficulties.`
+            },
+            {
+                id: 14,
+                question: `A patient who speaks a different language is being prepared for surgery and needs to sign the surgical consent form. Which action is the healthcare organization required to do?`,
+                options: [`Provide a licensed interpreter.`, `Provide a translator approved by the organization.`, `Ensure adequate resources necessary to comply with patient needs.`, `Choose an interpreter, a translator, or a family member to interpret.`],
+                correctIndex: 2,
+                rationale: `The healthcare organization must ensure adequate resources to comply with informed consent requirements. Specific selection of interpreter/translator/family is too narrow; the legal requirement is ensuring adequate resources for consent.`
+            },
+            {
+                id: 15,
+                question: `The nurse shares with the nurse manager, 'My patient believes in folk medicine, and when I tried to teach them about their antihypertensive medication, they replied by saying, 'I'd rather eat chicken soup than take those medications.' Which is the most appropriate response by the nurse manager?`,
+                options: [`This is common folk medicine. You can talk to them about taking their medications and eating chicken soup.`, `There is no scientific evidence to support chicken soup as a substitute for antihypertensive medications. Maybe you should do some research on this.`, `The patient can make their own choices and decisions, and there is nothing we can do about this.`, `You can tell the patient they can eat their soup, but they need to understand that they have to take their medications first.`],
+                correctIndex: 0,
+                rationale: `The most appropriate response is to ask the nurse to talk to the patient about using both, as neither will interfere with the other and the patient most likely needs the antihypertensive medications.`
+            },
+            {
+                id: 16,
+                question: `Which statement is most reflective of Madeleine Leininger's theory of cultural care?`,
+                options: [`The goal of the theory is to guide research that will assist nurses to provide culturally congruent care.`, `The model for cultural competence stresses teamwork in providing culturally sensitive and competent care.`, `The model focuses on five components of cultural competence: awareness, skills, knowledge, encounters, and desire.`, `The theory focuses on increasing levels of one's consciousness to improve the possibilities to provide culturally competent care.`],
+                correctIndex: 0,
+                rationale: `The goal of Leininger's theory is to guide research that will assist nurses to provide culturally congruent care using her three modes of nursing care actions.`
+            },
+            {
+                id: 17,
+                question: `Which statements about culture are true? Select all that apply.`,
+                options: [`Culture exists on both material and nonmaterial levels.`, `Culture mainly influences food choices and special holidays.`, `Cultural customs change over time at different rates.`, `Culture is learned through life experiences shared by culture members.`, `Cultural practices are tightly regulated by customs.`],
+                correctIndex: [0, 2, 3],
+                rationale: `Culture exists at many levels, changes over time, and is learned through shared life experiences. It is not limited to food/hoidays, nor are practices tightly regulated (they change).`
+            },
+            {
+                id: 18,
+                question: `The nurse is caring for a patient who refuses opioid pain medication based on their heritage despite the nurse's explanation regarding its importance in the healing process. Which interventions by the nurse are appropriate for this patient? Select all that apply.`,
+                options: [`Assess the patient's pain levels at less frequent intervals.`, `Document in the record that the patient does not want to take opioids.`, `Use nonpharmacological measures to help control the patient's pain.`, `Notify the primary care provider of the patient's noncompliance.`, `Ask the patient about cultural influences on pain management.`],
+                correctIndex: [1, 2],
+                rationale: `The nurse should document the refusal and employ nonpharmacological measures. Labeling as 'noncompliance' or probing about cultural influences (which may cause defensiveness) is inappropriate.`
+            },
+            {
+                id: 19,
+                question: `Which statements about race and ethnicity are true? Select all that apply.`,
+                options: [`Ethnicity refers to a person's cultural use of the indigenous healthcare system.`, `A person can have several aspects of a racial culture or be multicultural.`, `Ethnicity refers to groups whose members share a common and social heritage that is passed on to the next generation.`, `Race primarily reflects biology and refers to grouping of people based on biological similarities.`, `People of Hispanic, Latino, or Spanish origin self-identify as members of the same race.`],
+                correctIndex: [2, 3],
+                rationale: `Ethnicity refers to common/social heritage; Race refers to biological similarities. Hispanic/Latino is considered a sociocultural category, not a race.`
+            },
+            {
+                id: 20,
+                question: `Which statements are most true about the concept of acculturation? Select all that apply.`,
+                options: [`An acculturated person accepts both their own culture and a new culture, adopting elements of each.`, `It may take years and even generations for an immigrant group to acculturate.`, `Integrating essential values, beliefs, and behaviors of the dominant culture is acculturation.`, `Acculturation results from a minority group's need to survive and flourish in a new culture.`, `Acculturation is the maintenance of a culture within the presence of a dominant culture.`],
+                correctIndex: [0, 1, 3],
+                rationale: `Acculturation involves accepting both cultures, takes time (often generations), and results from the need to survive/flourish. Option 3 describes assimilation, not acculturation.`
+            },
+            {
+                id: 21,
+                question: `Which of the following are strategies a new nurse can use to develop skills in achieving cultural competence? Select all that apply.`,
+                options: [`Read the literature and study nursing theories and principles pertaining to culture.`, `Take advantage of opportunities to interact with persons from diverse cultures.`, `Reinforce the need for different cultures to follow the medical and nursing plan of care.`, `Embrace practices of common cultures, and select the best interventions from those cultures.`, `Learn and follow the culture guidelines created by regulating bodies in healthcare.`],
+                correctIndex: [0, 1],
+                rationale: `Key strategies include continuous learning/reading and taking advantage of opportunities to interact with diverse groups. We cannot force patients to follow plans (Option 3), and broad generalizations (Option 4) should be avoided.`
+            },
+            {
+                id: 22,
+                question: `The nurse is caring for a patient in a rural rehabilitation facility who uses folk medicine. The nurse explains the cardiac diet, but the patient states, 'I can't eat any of this food.' Based on this scenario, which of the following are the most appropriate nursing diagnoses? Select all that apply.`,
+                options: [`Noncompliance related to difficulty adhering to the medical regimen`, `Possible knowledge deficit related to disease process`, `Imbalanced nutrition: less than body requirement, related to cultural dietary practices`, `Decreased appetite related to anxiety secondary to a heart attack`, `Inability to adjust to a therapeutically prescribed diet due to cultural conflicts`],
+                correctIndex: [1, 2],
+                rationale: `Appropriate diagnoses are possible knowledge deficit (likely doesn't understand relationship of diet to cardiac health) and imbalanced nutrition related to dietary preferences. 'Noncompliance' is inappropriate here.`
+            },
+            {
+                id: 23,
+                question: `What are common beliefs and practices associated with the North American (Western) professional healthcare system? Select all that apply.`,
+                options: [`Values emphasize individualism and self-reliance.`, `Health is defined as living in harmony with nature.`, `Health is defined as absence or minimization of disease.`, `Health is primarily dominated by a biomedical healthcare system.`, `The system is run by a set of professional healthcare providers.`],
+                correctIndex: [0, 2, 3, 4],
+                rationale: `Western medicine emphasizes individualism, defines health as absence of disease, is dominated by biomedical systems, and run by professional providers. Harmony with nature is more reflective of Native American beliefs.`
+            },
+            {
+                id: 24,
+                question: `Which statements are most accurate regarding values and beliefs? Select all that apply.`,
+                options: [`A value is a standard or principle that has meaning and worth to an individual.`, `Values are a set of behaviors that one follows to guide health practices.`, `All members of certain cultures will share the same values and beliefs.`, `A belief is something one accepts as being true.`, `It is safe to assume a client shares the beliefs of the dominant culture.`],
+                correctIndex: [0, 3],
+                rationale: `A value is a standard/principle; a belief is something accepted as true. Values are not necessarily behaviors, and one cannot assume all members of a culture share the same values.`
+            },
+            {
+                id: 25,
+                question: `A nurse demonstrates an understanding of multiculturalism when they can demonstrate which of the following? Select all that apply.`,
+                options: [`Accommodates diversity`, `Identifies cultural archetypes`, `Incorporates inclusion`, `Identifies cultural stereotypes`, `Embraces ethnocentrism`],
+                correctIndex: [0, 2],
+                rationale: `Multiculturalism accommodates diversity and incorporates inclusion. Ethnocentrism and stereotyping are barriers, not demonstrations of multicultural understanding.`
+            }
+        ],
+        "Chapter 25": [
+            {
+                id: 1,
+                question: `While performing a physical assessment, the student nurse tells the instructor that they cannot palpate the patient's bladder. Which statement by the instructor is best?`,
+                options: [`Try to palpate it again. It takes practice, but you will locate it.`, `It is best to palpate the patient's bladder only when it is distended by urine.`, `Document this abnormal finding on the patient's chart.`, `Notify the nurse assigned to the care of your patient.`],
+                correctIndex: 1,
+                rationale: `The bladder is not palpable unless it is distended by urine. It is not an abnormal finding.`
+            },
+            {
+                id: 2,
+                question: `What would the expected specific gravity of urine be in a patient admitted with dehydration?`,
+                options: [`1.002`, `1.010`, `1.021`, `1.033`],
+                correctIndex: 3,
+                rationale: `Normal urine specific gravity ranges from 1.002 to 1.030. Specific gravity rises with dehydration (1.033).`
+            },
+            {
+                id: 3,
+                question: `The nurse identifies a nursing diagnosis of urinary incontinence in an older adult patient admitted after a stroke. Urinary incontinence places the patient at risk for which complication?`,
+                options: [`Skin breakdown`, `Urinary tract infection`, `Bowel incontinence`, `Renal calculi`],
+                correctIndex: 0,
+                rationale: `Skin breakdown is a complication of urinary incontinence due to prolonged contact with urine.`
+            },
+            {
+                id: 4,
+                question: `The nurse is caring for a patient who underwent a bowel resection 2 hours ago. The urine output for the past 2 hours totals 50 mL. Which action should the nurse take?`,
+                options: [`Do nothing; this is normal postoperative urine output.`, `Increase the infusion rate of the patient's intravenous (IV) fluids.`, `Notify the provider about the patient's oliguria.`, `Administer the patient's routine diuretic dose early.`],
+                correctIndex: 2,
+                rationale: `The kidneys typically produce 60 mL of urine per hour. A total of 50 mL in 2 hours is oliguria and requires provider notification.`
+            },
+            {
+                id: 5,
+                question: `The nurse needs to measure the urine output of a patient who requires a bedpan to void. Which action should the nurse take first? Put on gloves, and:`,
+                options: [`Have the patient void directly into the bedpan.`, `Pour the urine into a graduated container.`, `Read the volume with the container on a flat surface at eye level.`, `Observe the color and clarity of the urine in the bedpan.`],
+                correctIndex: 0,
+                rationale: `The first step is to have the patient void directly into the bedpan. Subsequent steps involve pouring, reading, and observing.`
+            },
+            {
+                id: 6,
+                question: `The nurse instructs a woman about providing a clean-catch urine specimen. Which statement indicates the patient correctly understands the procedure?`,
+                options: [`I will be sure to urinate into the 'hat' you placed on the toilet seat.`, `I will wipe my genital area from front to back before I collect the specimen midstream.`, `I will need to lie still while you put in a urinary catheter to obtain the specimen.`, `I will collect my urine each time I urinate for the next 24 hours.`],
+                correctIndex: 1,
+                rationale: `For a clean-catch specimen, the patient should cleanse from front to back and collect the specimen midstream ('clean to dirty' principle).`
+            },
+            {
+                id: 7,
+                question: `What position should the female patient assume before the nurse inserts an indwelling urinary catheter?`,
+                options: [`Modified Trendelenburg`, `Prone`, `Dorsal recumbent`, `Semi-Fowler's`],
+                correctIndex: 2,
+                rationale: `The dorsal recumbent position (supine with knees flexed, feet flat) is correct for catheter insertion in females.`
+            },
+            {
+                id: 8,
+                question: `A female patient complains that she passes urine whenever she sneezes or coughs. How should the nurse document this finding in the patient's healthcare record?`,
+                options: [`Transient incontinence`, `Overflow incontinence`, `Urge incontinence`, `Stress incontinence`],
+                correctIndex: 3,
+                rationale: `Stress incontinence is involuntary loss of urine with increased intra-abdominal pressure (sneezing, coughing).`
+            },
+            {
+                id: 9,
+                question: `Which outcome is appropriate for the patient who underwent urinary diversion surgery and the creation of an ileal conduit (conventional urostomy) for invasive bladder cancer?`,
+                options: [`Patient will resume normal urination pattern by (target date).`, `Patient will perform urostomy self-care by (target date).`, `Patient will perform self-catheterization by (target date).`, `Patient's urine will remain clear with sufficient volume.`],
+                correctIndex: 1,
+                rationale: `Patients with an ileal conduit cannot resume normal urination or self-catheterize. The appropriate outcome is performing urostomy self-care.`
+            },
+            {
+                id: 10,
+                question: `Which intervention should the nurse do first to promote micturition in a patient who is having difficulty voiding?`,
+                options: [`Insert an indwelling urinary catheter.`, `Notify the healthcare provider immediately.`, `Obtain an intermittent, straight catheter.`, `Pour warm water over the patient's perineum.`],
+                correctIndex: 3,
+                rationale: `The nurse should try independent, least invasive nursing measures first, such as pouring warm water over the perineum.`
+            },
+            {
+                id: 11,
+                question: `The student nurse asks the healthcare provider if an indwelling urinary catheter will be prescribed for a hospitalized patient who is incontinent. The healthcare provider explains that catheters should be utilized only when absolutely necessary because:`,
+                options: [`They are the leading cause of healthcare-associated infections.`, `They are too expensive for routine use.`, `They contain latex, increasing the risk for allergies.`, `They are painful upon insertion for most patients.`],
+                correctIndex: 0,
+                rationale: `Indwelling urinary catheters are a major cause of healthcare-associated infections and should not be used routinely for incontinence.`
+            },
+            {
+                id: 12,
+                question: `A patient who sustained a spinal cord injury will perform intermittent self-catheterization after discharge. After discharge teaching, which statement by the patient would indicate correct understanding of the procedure?`,
+                options: [`I will need to replace the catheter monthly.`, `I will use clean, rather than sterile, technique at home.`, `I will remember to inflate the catheter balloon after insertion.`, `I will dispose of the catheter after use and get a new one each time.`],
+                correctIndex: 1,
+                rationale: `Clean technique is appropriate for intermittent self-catheterization at home.`
+            },
+            {
+                id: 13,
+                question: `The nurse notes that a patient's indwelling urinary catheter tubing contains sediment and crusting at the meatus. Which action should the nurse take?`,
+                options: [`Notify the healthcare provider immediately.`, `Flush the catheter tubing with saline solution.`, `Replace the indwelling urinary catheter.`, `Encourage fluids that increase urine acidity.`],
+                correctIndex: 2,
+                rationale: `The catheter needs to be replaced when sediment collects in the tubing or crusting occurs at the meatus.`
+            },
+            {
+                id: 14,
+                question: `The nurse meets resistance when irrigating a patient's urinary catheter. Which action would the nurse perform first?`,
+                options: [`Slightly turn the patient.`, `Replace the patient's indwelling urinary catheter.`, `Force the fluid through the catheter tubing.`, `Notify the healthcare provider.`],
+                correctIndex: 0,
+                rationale: `If resistance is met, the nurse should first ask the patient to turn slightly and attempt irrigation again.`
+            },
+            {
+                id: 15,
+                question: `A patient is admitted with elevated blood urea nitrogen (BUN) and creatinine levels, as well as anuria. Based on these findings, the nurse suspects which diagnosis?`,
+                options: [`Urinary tract infection`, `Renal calculi`, `Enuresis`, `Renal failure`],
+                correctIndex: 3,
+                rationale: `Elevated BUN and creatinine, along with anuria, are indicative signs of renal failure.`
+            },
+            {
+                id: 16,
+                question: `At an annual well-child checkup, a mother tells the nurse that her 6-year-old son occasionally 'wets himself' during the day. Which response by the nurse is appropriate?`,
+                options: [`Explain that occasional wetting is normal in children of this age.`, `Tell the mother to restrict her child's activities to avoid wetting.`, `Suggest 'time-out' to reinforce the importance of staying dry.`, `Inform the mother that medication is commonly used to control wetting.`],
+                correctIndex: 0,
+                rationale: `Occasional wetting is normal in children during the early school years.`
+            },
+            {
+                id: 17,
+                question: `The nurse is making assignments for the shift. Which assignment would the nurse delegate to the unlicensed assistive personnel (UAP)?`,
+                options: [`Teaching the patient to perform the Credé's maneuver`, `Irrigating an indwelling catheter`, `Applying a condom catheter`, `Obtaining the patient's urinary history and physical assessment`],
+                correctIndex: 2,
+                rationale: `Applying a condom catheter is a task that can be safely delegated to UAP. Teaching, assessment, and irrigation require nursing judgment.`
+            },
+            {
+                id: 18,
+                question: `Which action should the nurse take when starting bladder training using a voiding schedule?`,
+                options: [`Offer the patient a bedpan every 2 hours while awake.`, `Increase the voiding interval by 30 to 60 minutes each week.`, `Frequently ask the patient if they have the urge to void.`, `Lengthen the time between voidings even if urine leakage occurs.`],
+                correctIndex: 0,
+                rationale: `The initial step is to offer a bedpan or assist to the bathroom every 2 hours while awake.`
+            },
+            {
+                id: 19,
+                question: `A patient is prescribed furosemide, a loop diuretic, for treatment of congestive heart failure. The nurse should monitor for which electrolyte loss?`,
+                options: [`Calcium`, `Potassium`, `Magnesium`, `Phosphorus`],
+                correctIndex: 1,
+                rationale: `Furosemide is a loop diuretic that causes potassium loss.`
+            },
+            {
+                id: 20,
+                question: `The nurse is calculating the intake and output (I&O) for a patient. On the I&O record, the following information is noted: milk 140 mL at breakfast, voided 240 mL after breakfast, 120 mL of coffee at 1000, and urinated 300 mL at 1100. Which amount will the nurse document for the total urine output?`,
+                options: [`240 mL`, `540 mL`, `380 mL`, `300 mL`],
+                correctIndex: 1,
+                rationale: `The total urine output is the sum of the voided amounts: 240 mL + 300 mL = 540 mL.`
+            },
+            {
+                id: 21,
+                question: `The nurse is preparing a patient for a computerized tomography with contrast media. Which instruction will the nurse share with the client?`,
+                options: [`You will have a pressure probe inserted into your rectum.`, `You will wear your rings and eyeglasses into the procedure room.`, `You will need to let me know if you are allergic to shellfish.`, `You will drink 5 to 6 glasses of fluid 90 minutes before the test.`],
+                correctIndex: 2,
+                rationale: `Contrast media can cause allergic reactions in patients allergic to shellfish or iodine.`
+            },
+            {
+                id: 22,
+                question: `What is the best technique for collecting a sterile urine specimen from an indwelling urinary catheter?`,
+                options: [`Use antiseptic wipes to cleanse the meatus prior to obtaining the sample.`, `Briefly disconnect the catheter from the drainage tube to obtain a sample.`, `Withdraw urine through the port using a needleless access device.`, `Obtain the urine specimen directly from the collection bag.`],
+                correctIndex: 2,
+                rationale: `A sterile specimen is obtained by accessing the specimen port with a needleless device.`
+            },
+            {
+                id: 23,
+                question: `A patient's catheter bag is empty 2 hours after it was last drained. The nurse's first action is to:`,
+                options: [`Irrigate the catheter.`, `Perform a bladder scan.`, `Replace the catheter.`, `Check for kinks or compression.`],
+                correctIndex: 3,
+                rationale: `The first action is to check for kinks or compression in the tubing, which may impede flow.`
+            },
+            {
+                id: 24,
+                question: `What type of indwelling catheter is most suitable for long-term use?`,
+                options: [`Silver-alloy catheter`, `Polyvinyl chloride (PVC) catheter`, `Silicone catheter`, `Triple-lumen catheter`],
+                correctIndex: 2,
+                rationale: `Silicone catheters cause less tissue irritation and prevent encrustation, making them suitable for long-term use.`
+            },
+            {
+                id: 25,
+                question: `The nurse is teaching a female patient with stress incontinence how to perform pelvic floor muscle exercises (PFMEs). Which statement indicates the patient understands the procedure?`,
+                options: [`I will practice by stopping and starting my urine flow.`, `I will hold each contraction for 20 seconds.`, `I will perform 30 to 45 contractions each morning.`, `I will keep the contraction and relaxation times equal.`],
+                correctIndex: 3,
+                rationale: `Contraction and relaxation times should be equal (e.g., 5 seconds each).`
+            },
+            {
+                id: 26,
+                question: `Which structure in the urinary tract system is considered the functional unit responsible for filtration and water absorption?`,
+                options: [`Collecting duct`, `Ureter`, `Nephron`, `Tubular system`],
+                correctIndex: 2,
+                rationale: `The nephron is the basic structural and functional unit of the kidney responsible for filtration and fluid balance.`
+            },
+            {
+                id: 27,
+                question: `Which statement best describes how normal voluntary urination occurs?`,
+                options: [`The detrusor muscle relaxes to pass urine through the urethra.`, `The external urethral sphincter contracts to force urine out of the bladder.`, `Stretch receptors send a sensory impulse to the voiding reflex center.`, `Voluntary control of the internal urethral sphincter leads to bladder emptying.`],
+                correctIndex: 2,
+                rationale: `Normal urination begins when stretch receptors in the bladder wall send sensory impulses to the voiding reflex center in the spinal cord.`
+            },
+            {
+                id: 28,
+                question: `The nurse is caring for a patient who has a neobladder. Which action should the nurse take?`,
+                options: [`Insert an indwelling catheter.`, `Replace the collection device, as needed.`, `Inspect the color of the stoma.`, `Encourage the patient to perform Kegel exercises.`],
+                correctIndex: 3,
+                rationale: `Patients with a neobladder are instructed to perform Kegel exercises to help control continence. There is no stoma or collection device.`
+            },
+            {
+                id: 29,
+                question: `The nurse is inserting an indwelling urinary catheter in a female patient. Upon insertion of the catheter, the nurse accidentally touches the patient's leg and bedsheet with the tip of the catheter. What is the most appropriate action by the nurse?`,
+                options: [`Wipe the tip of the catheter with povidone-iodine before proceeding with the insertion.`, `Cleanse the tip of the catheter with alcohol before proceeding with the insertion.`, `Obtain a new catheter and reinsert it using sterile technique.`, `Apply more lubricant and continue to insert the catheter.`],
+                correctIndex: 2,
+                rationale: `If the catheter tip touches an unsterile surface, it is contaminated. The nurse must obtain a new sterile catheter.`
+            },
+            {
+                id: 30,
+                question: `The nurse is caring for a patient who has had an indwelling urinary catheter inserted for the past 5 days. In reviewing and revising the plan of care, what is the most important nursing diagnosis for this patient?`,
+                options: [`Disturbed body image`, `Risk for infection`, `Risk for impaired skin integrity`, `Risk for decreased urine output`],
+                correctIndex: 1,
+                rationale: `Any patient with an indwelling catheter is at risk for infection, which increases the longer the catheter remains in place.`
+            },
+            {
+                id: 31,
+                question: `The nurse is checking for costovertebral angle tenderness. Which technique would the nurse use?`,
+                options: [`Place one palm flat on the 12th rib and spine, on the back, and lightly strike it with the other hand.`, `Apply the scanner above the symphysis pubis.`, `Gently percuss the bladder midline abdomen.`, `Calibrate the refractometer before using.`],
+                correctIndex: 0,
+                rationale: `Costovertebral tenderness is assessed by placing a palm on the costovertebral angle and striking it with the other fist.`
+            },
+            {
+                id: 32,
+                question: `The nurse is planning care for a renal patient who is prescribed a diuretic medication. In planning care, what is the most appropriate time of day to administer this medication?`,
+                options: [`In the morning`, `In the afternoon`, `In the evening before bedtime`, `After meals`],
+                correctIndex: 0,
+                rationale: `Diuretics should be administered in the morning to prevent nocturia and sleep interruption.`
+            },
+            {
+                id: 33,
+                question: `A nurse is caring for a 64-year-old bedridden female who is a fall risk. The nurse must help the patient urinate in a bedpan. What would be the most appropriate position to facilitate urination?`,
+                options: [`Prone`, `Semi-Fowler's`, `Standing`, `Recumbent`],
+                correctIndex: 1,
+                rationale: `Semi-Fowler's (upright seated) position is most appropriate to facilitate urination for a bedridden female patient.`
+            },
+            {
+                id: 34,
+                question: `Which interventions are appropriate for an older adult patient with urinary incontinence? Select all that apply.`,
+                options: [`Increase the intake of citrus fruits.`, `Regularly consume high-fiber foods.`, `Limit daily caffeine intake to less than 100 mg.`, `Engage in high-impact, aerobic exercise.`, `Keep fluid intake extremely low.`],
+                correctIndex: [1, 2],
+                rationale: `High-fiber foods prevent constipation (which can worsen incontinence), and limiting caffeine reduces bladder irritation.`
+            },
+            {
+                id: 35,
+                question: `A client has just voided 50 mL and yet reports that the bladder still feels full. The nurse's next actions should include which of the following? Select all that apply.`,
+                options: [`Palpating the bladder height`, `Obtaining a clean-catch urine specimen`, `Performing a bladder scan`, `Applying a heating pad to the lower abdomen`, `Inserting an incontinence pessary`],
+                correctIndex: [0, 2, 3],
+                rationale: `Appropriate actions include palpating for distention, bladder scanning for residual urine, and applying heat to relax muscles.`
+            },
+            {
+                id: 36,
+                question: `Which tasks may be delegated to a UAP? Select all that apply.`,
+                options: [`Measuring and recording intake and output`, `Performing a bedside dipstick urine test`, `Irrigating a triple lumen catheter`, `Assessing a patient's ability to collect a urine specimen`, `Determining which type of catheter to insert`],
+                correctIndex: [0, 1],
+                rationale: `Measuring I&O and performing dipstick tests can be delegated. Irrigation, assessment, and clinical judgment cannot.`
+            },
+            {
+                id: 37,
+                question: `The nurse is caring for a patient with suspected kidney dysfunction. In reviewing the patient's home medication list, the nurse is most alerted to which medications? Select all that apply.`,
+                options: [`Aspirin`, `Gentamicin`, `Estrogen`, `Ibuprofen`, `Insulin`],
+                correctIndex: [0, 1, 3],
+                rationale: `Aspirin, Gentamicin, and Ibuprofen (NSAIDs) are nephrotoxic drugs.`
+            },
+            {
+                id: 38,
+                question: `The nurse is preparing a young adult female patient for intravenous pyelogram (IVP). What actions should the nurse prioritize prior to this procedure? Select all that apply.`,
+                options: [`Obtain an informed consent prior to the procedure.`, `Ask whether the patient has an allergy to iodine.`, `Check laboratory results for serum BUN and creatinine.`, `Encourage increased fluid intake prior to the procedure.`, `Determine whether the patient has had a barium enema in the past 4 days.`],
+                correctIndex: [0, 1, 2, 4],
+                rationale: `Priorities include informed consent, checking allergies (iodine), checking renal function (BUN/creatinine), and checking for recent barium tests. Fluids are usually restricted, not increased.`
+            },
+            {
+                id: 39,
+                question: `Which age-related changes are considered normal processes in the urinary system that occur in older adults? Select all that apply.`,
+                options: [`The number of functional nephrons decreases with age.`, `The size of the kidney shrinks.`, `Increased bladder muscle tone contributes to incontinence.`, `Loss of bladder elasticity occurs.`, `Prostate enlargement causes urinary incontinence.`],
+                correctIndex: [0, 1, 3],
+                rationale: `Normal aging involves fewer nephrons, shrinking kidneys, and loss of bladder elasticity. Muscle tone decreases (not increases), and prostate enlargement causes retention/frequency, not necessarily incontinence.`
+            },
+            {
+                id: 40,
+                question: `The nurse would expect which signs and symptoms for a patient with a suspected urinary tract infection (UTI)? Select all that apply.`,
+                options: [`Urinary frequency`, `Dysuria`, `Polyuria`, `Upper abdominal pain`, `Foul-smelling urine`],
+                correctIndex: [0, 1, 4],
+                rationale: `Signs of UTI include frequency, dysuria, and foul-smelling urine. Polyuria and upper abdominal pain are typically not signs of a simple UTI.`
+            },
+            {
+                id: 41,
+                question: `The nurse educator is preparing a teaching plan on preventing UTIs for a group of female college students. Which information will the nurse include in the plan? Select all that apply.`,
+                options: [`Empty the bladder soon after sexual intercourse.`, `Urinate when you first feel the urge to void.`, `Wear appropriate underwear, including nylon or synthetic garments.`, `Wipe perineum area from back to front after voiding.`, `Avoid tight-fitting clothes over the groin area.`],
+                correctIndex: [0, 1, 4],
+                rationale: `Preventative measures include voiding after intercourse, voiding when urged, and avoiding tight clothes. Cotton underwear is preferred over synthetic, and wiping should be front to back.`
+            }
+        ],
+        "Chapter 26": [
+            {
+                id: 1,
+                question: `When changing a diaper, the nurse observes that a 2-day-old infant has passed green-black, tarry stools. What should the nurse do?`,
+                options: [`Notify the provider immediately.`, `Do nothing; this is normal.`, `Give the baby sterile water until the mother's milk comes in.`, `Apply a skin barrier cream to the buttocks to prevent irritation.`],
+                correctIndex: 1,
+                rationale: `During the first few days of life, a term newborn passes green-black, tarry stools known as meconium. This is a normal finding.`
+            },
+            {
+                id: 2,
+                question: `Considering normal developmental and physical maturation in children, at what age would the goal of 'Achieves bowel control by the end of this month' be most realistic?`,
+                options: [`18 months`, `3 years`, `4 years`, `5 years`],
+                correctIndex: 1,
+                rationale: `Between ages 2 and 3 years, a child can typically control defecation, thereby making toilet training possible.`
+            },
+            {
+                id: 3,
+                question: `The registered nurse is working on the medical-surgical floor. Which of the following scenarios by a licensed practical nurse (LPN) would cause the nurse to intervene immediately?`,
+                options: [`Applies a clean ostomy appliance`, `Irrigates a newly created colostomy`, `Applies an external fecal-collection system`, `Irrigates an ileostomy`],
+                correctIndex: 3,
+                rationale: `Ileostomies should never be irrigated. Only a qualified person, such as an enterostomal therapy nurse, may perform gentle lavage to clear food blockage.`
+            },
+            {
+                id: 4,
+                question: `A patient is diagnosed with an intestinal infection after traveling abroad. The nurse should encourage the intake of which food to promote healing?`,
+                options: [`Yogurt`, `Pasta`, `Oatmeal`, `Broccoli`],
+                correctIndex: 0,
+                rationale: `The active bacteria in yogurt stimulates peristalsis and promotes healing of intestinal infections.`
+            },
+            {
+                id: 5,
+                question: `The nurse is performing an abdominal assessment on a client with irritable bowel syndrome. The nurse has just finished inspection of the abdomen. Which action should the nurse take next?`,
+                options: [`Palpate for distention.`, `Percuss for presence of air.`, `Auscultate for bowel sounds.`, `Feel for masses.`],
+                correctIndex: 2,
+                rationale: `In an abdominal assessment, the order of the exam is inspection, auscultation, percussion, and palpation.`
+            },
+            {
+                id: 6,
+                question: `A patient with a skin infection is prescribed cephalexin (an antibiotic). The patient reports that the last time they took this medication, they had frequent episodes of loose stools. Which recommendation should the nurse make?`,
+                options: [`Stop taking the drug immediately if diarrhea develops.`, `Take an antidiarrheal agent, such as diphenoxylate.`, `Consume yogurt daily while taking the antibiotic.`, `Increase intake of fiber until the diarrhea stops.`],
+                correctIndex: 2,
+                rationale: `Antibiotics decrease normal flora in the colon, often resulting in diarrhea. Bacterial populations can be maintained with daily consumption of yogurt.`
+            },
+            {
+                id: 7,
+                question: `The nurse is caring for a patient who has a continent ileostomy. Which intervention will the nurse add to the plan of care?`,
+                options: [`Change the ostomy appliance as needed.`, `Place a bedside commode by the patient's bed.`, `Keep the collection device below the bladder.`, `Insert a tube into the stoma to drain the pouch.`],
+                correctIndex: 3,
+                rationale: `A continent ileostomy avoids continuous drainage. To drain the pouch, the patient inserts a tube through the external stoma into the pouch several times per day.`
+            },
+            {
+                id: 8,
+                question: `The healthcare team suspects that a patient has an intestinal infection. Which action should the nurse take to help confirm the diagnosis?`,
+                options: [`Prepare the patient for an abdominal flat plate.`, `Collect a stool specimen that contains 20 to 30 mL of liquid stool.`, `Administer a laxative to prepare the patient for a colonoscopy.`, `Test the patient's stool by using a fecal occult test.`],
+                correctIndex: 1,
+                rationale: `To confirm the diagnosis of an infection, the nurse should collect a liquid stool specimen that contains 20 to 30 mL of liquid stool.`
+            },
+            {
+                id: 9,
+                question: `The nurse is instructing a patient on how to perform home testing for fecal occult blood. The nurse should explain that ingestion of which substance may cause a false-negative fecal occult blood test?`,
+                options: [`Vitamin D`, `Iron`, `Vitamin C`, `Thiamine`],
+                correctIndex: 2,
+                rationale: `Ingestion of vitamin C can produce a false-negative fecal occult blood test result.`
+            },
+            {
+                id: 10,
+                question: `Which instruction should the nurse give the parent to assess a 2-year-old child for pinworms?`,
+                options: [`Press clear cellophane tape against the rectum as soon as the child wakes up.`, `Collect freshly passed stools from the diaper by using a wooden specimen blade.`, `Insert a cotton-tipped swab 2 inches (5 cm) into the rectum to look for visible worms.`, `Do not let the child eat after midnight for an x-ray in the morning.`],
+                correctIndex: 0,
+                rationale: `The parent can test for the presence of eggs by pressing clear cellophane tape against the anal opening as soon as the child awakens.`
+            },
+            {
+                id: 11,
+                question: `A patient with cancer is started on morphine for excruciating pain. Which diagnosis should the nurse add to the patient's care plan?`,
+                options: [`Risk for constipation`, `Constipation`, `Perceived constipation`, `Chronic constipation`],
+                correctIndex: 0,
+                rationale: `Opioids like morphine are known to decrease peristalsis. 'Risk for constipation' is appropriate as there is no evidence of an actual problem yet.`
+            },
+            {
+                id: 12,
+                question: `The nurse assesses a patient's abdomen 4 days after abdominal surgery and notes that bowel sounds are absent. This finding most likely suggests which postoperative complication?`,
+                options: [`Paralytic ileus`, `Small bowel obstruction`, `Diarrhea`, `Constipation`],
+                correctIndex: 0,
+                rationale: `Absent bowel sounds on the fourth postoperative day suggests paralytic ileus, a complication associated with abdominal surgery.`
+            },
+            {
+                id: 13,
+                question: `A patient with severe hemorrhoids is incontinent of liquid stool. Which intervention is contraindicated?`,
+                options: [`Apply an indwelling fecal-drainage device.`, `Apply an external fecal-collection device.`, `Place an incontinence garment on the patient.`, `Place a moisture-resistant pad under the patient's buttocks.`],
+                correctIndex: 0,
+                rationale: `Applying an indwelling fecal-management system is contraindicated for patients with large, painful, or severe hemorrhoids.`
+            },
+            {
+                id: 14,
+                question: `A patient has a colostomy in the descending (sigmoid) colon and wants to control bowel evacuation and possibly stop wearing an ostomy pouch. To help achieve this goal, the nurse should teach the patient to:`,
+                options: [`Call the primary care provider if the stoma becomes pale, dusky, or black.`, `Limit the intake of gas-forming foods such as cabbage, onions, and fish.`, `Irrigate the stoma to produce a bowel movement on a schedule.`, `Follow the bananas, white rice, applesauce, and toast (BRAT) diet on a regular basis.`],
+                correctIndex: 2,
+                rationale: `Patients with an ostomy in the descending or sigmoid colon may use colostomy irrigation to control and schedule bowel evacuation.`
+            },
+            {
+                id: 15,
+                question: `The nurse is performing a colostomy irrigation on a patient. During the irrigation, the patient begins to complain of abdominal cramps. What is the appropriate nursing action?`,
+                options: [`Notify the physician.`, `Stop the irrigation temporarily.`, `Increase the height of the irrigation.`, `Medicate for pain and resume the irrigation.`],
+                correctIndex: 1,
+                rationale: `If cramping occurs, stop the flow for 15 to 30 seconds and ask the client to take deep breaths. Cramping may indicate the water is too cold, flow is too fast, or air is in the tube.`
+            },
+            {
+                id: 16,
+                question: `The nurse instilled 60 mL of irrigant into an indwelling fecal-drainage device. The patient's output was 140 mL. What would the nurse chart as the client's output of stool?`,
+                options: [`200 mL`, `140 mL`, `60 mL`, `80 mL`],
+                correctIndex: 3,
+                rationale: `The nurse must subtract the irrigant from the stool volume to find the true amount of stool output: 140 - 60 = 80 mL.`
+            },
+            {
+                id: 17,
+                question: `The nurse is obtaining a bowel-elimination history from an 80-year-old patient. The patient states, 'Sometimes when I go to the bathroom, I push real hard, hold my breath, and plug my nose.' Which action should the nurse take first?`,
+                options: [`Warn the patient, 'You should not hold your breath while straining.'`, `Assure the patient, 'This does seem to help some people to have a bowel movement.'`, `Check the patient's medical history for heart disease or glaucoma.`, `Notify the primary care provider that the patient has reported performing this action.`],
+                correctIndex: 2,
+                rationale: `The patient is describing the Valsalva maneuver. The nurse should check for contraindications (heart disease, glaucoma, ICP) before deciding how to advise the patient.`
+            },
+            {
+                id: 18,
+                question: `A home-health nurse is seeing a patient with a new colostomy at their home. In formulating a plan of care, which of the following goals is a priority for this patient?`,
+                options: [`Adjust emotionally to the colostomy and lifestyle change`, `Verbalize appropriate steps in caring for the colostomy`, `Assume self-care in colostomy management`, `Experience liquid stool with minimal flatus`],
+                correctIndex: 2,
+                rationale: `While reactions vary, the ultimate priority goal is for the patient to assume self-care in colostomy management.`
+            },
+            {
+                id: 19,
+                question: `The enterostomal nurse is conducting a teaching session for patients with new colostomies regarding self-assessment. Which sign/symptom should the nurse include in this teaching to be reported immediately?`,
+                options: [`Constipation`, `Skin breakdown`, `A stoma that is deep pink to red in color`, `A stoma that is pale, dusky, or black in color`],
+                correctIndex: 3,
+                rationale: `A stoma that is pale, dusky, or black indicates ischemia or necrosis and must be reported immediately.`
+            },
+            {
+                id: 20,
+                question: `In what area of the bowel is the appendix located?`,
+                options: [`Inside the sigmoid colon`, `Next to the rectum`, `Off of the cecum`, `Right by the internal sphincter of the anus`],
+                correctIndex: 2,
+                rationale: `The appendix is a small, fingerlike appendage off the cecum.`
+            },
+            {
+                id: 21,
+                question: `The nurse is preparing a patient for an invasive diagnostic test that will provide direct visualization of the rectum, entire large intestine, and distal small bowel. The nurse should teach about which test?`,
+                options: [`Barium enema`, `Ultrasound of the abdomen`, `Sigmoidoscopy`, `Colonoscopy`],
+                correctIndex: 3,
+                rationale: `A colonoscopy provides direct visualization of the rectum, colon, entire large intestine, and distal small bowel.`
+            },
+            {
+                id: 22,
+                question: `Which factors place the patient at risk for constipation? Select all that apply.`,
+                options: [`Sedentary lifestyle`, `High-dose calcium supplements`, `Lactose intolerance`, `Consumption of spicy food`, `Antibiotic use`],
+                correctIndex: [0, 1],
+                rationale: `Physical activity stimulates peristalsis, so sedentary lifestyles increase risk. High-dose calcium supplements also predispose patients to constipation. The other options typically cause diarrhea.`
+            },
+            {
+                id: 23,
+                question: `A patient who has been immobile since sustaining injuries in a motor vehicle accident reports passing hard stools. Which fluids should the patient avoid because of the diuretic effect? Select all that apply.`,
+                options: [`Cranberry juice`, `Water`, `Coffee`, `Lemonade`, `Tea`],
+                correctIndex: [2, 4],
+                rationale: `Coffee and tea contain caffeine, which enhances diuresis and should be avoided when trying to hydrate to treat constipation.`
+            },
+            {
+                id: 24,
+                question: `The nurse must administer an enema to an adult patient with constipation. Which of the following would be a safe and effective distance for the nurse to insert the tubing into the patient's rectum? Select all that apply.`,
+                options: [`2 in. (5.1 cm)`, `3 in. (7.6 cm)`, `4 in. (10.2 cm)`, `5 in. (12.7 cm)`, `6 in (15.2 cm)`],
+                correctIndex: [1, 2],
+                rationale: `When administering an enema, the nurse should insert the tubing about 3 to 4 inches (7.6 cm to 10.2 cm) into the adult patient's rectum.`
+            },
+            {
+                id: 25,
+                question: `In advising an older adult who takes laxatives regularly, the nurse would identify which of the following factors? Select all that apply.`,
+                options: [`Consistent use of laxatives is thought to cause, rather that cure, constipation.`, `Habitual use of laxatives may lead to the need for ever-increasing dosages.`, `Chronic laxative use can lead to dependency on the medication.`, `Over-the-counter (OTC) laxatives are better than bulking agents.`, `Laxative use is recommended, if taken regularly.`],
+                correctIndex: [0, 1, 2],
+                rationale: `Consistent laxative use can cause constipation, lead to dependency, and result in the need for increasing dosages.`
+            },
+            {
+                id: 26,
+                question: `Which populations are considered high risk for the development of hemorrhoids? Select all that apply.`,
+                options: [`Pregnant women`, `School bus drivers`, `Marathon runners`, `Intensive care unit nurses`, `Desk job workers`],
+                correctIndex: [0, 1, 4],
+                rationale: `Hemorrhoids are caused by chronic pressure on veins in the anal canal. High risk groups include pregnant women (uterine pressure) and those with prolonged sitting like bus drivers and desk workers.`
+            },
+            {
+                id: 27,
+                question: `A nurse is caring for a patient who asks, 'What is considered normal for bowel movements?' What is the best response by the nurse? Select all that apply.`,
+                options: [`We usually like to set an acceptable standard of at least two bowel movements per week.`, `We can say normal frequency is anything from several times a day to once per week. It depends on your normal pattern.`, `We also consider whether you have to strain with bowel movements, use laxatives, or have to rush to the toilet.`, `There is no such thing as normal. All people are different, so no need to worry about it.`, `Since there are so many different types of normal, this is an issue you should discuss with your primary care provider.`],
+                correctIndex: [1, 2],
+                rationale: `Normal frequency varies widely (several times/day to once/week). Normal function is also defined by passing stool without urgency, straining, or laxatives.`
+            },
+            {
+                id: 28,
+                question: `A nurse is performing a focused bowel assessment on an older adult patient. Which physiological changes of aging should alert the nurse to an increased risk for problems associated with bowel elimination? Select all that apply.`,
+                options: [`Decreased sphincter control`, `Decreased peristalsis`, `Increased intestinal muscle tone`, `Decreased physical activity`, `Increased perineal tone`],
+                correctIndex: [0, 1],
+                rationale: `Normal physiological changes of aging include decreased sphincter control and decreased peristalsis. (Decreased activity is common but not a physiological change of aging itself).`
+            },
+            {
+                id: 29,
+                question: `A community-health nurse is preparing a teaching plan on food choices that promote normal bowel elimination. Which foods should the nurse stress to participants to include in their diet? Select all that apply.`,
+                options: [`Fresh fruits`, `Lean meats`, `Whole-grain cereals`, `Pastas`, `Peas`],
+                correctIndex: [0, 2, 4],
+                rationale: `Fresh fruits, whole-grain cereals, and peas are high-fiber foods that promote normal bowel elimination. Meats and pastas are low-fiber.`
+            },
+            {
+                id: 30,
+                question: `A patient has a history of chronic constipation. Which medications prescribed to the patient would alert the nurse to be especially vigilant in observing for constipation? Select all that apply.`,
+                options: [`Naproxen`, `Iron`, `Antibiotics`, `Pain medications`, `Ibuprofen`],
+                correctIndex: [1, 3],
+                rationale: `Iron has an astringent effect, and pain medications (opioids) slow peristalsis; both are associated with a high incidence of constipation.`
+            },
+            {
+                id: 31,
+                question: `The nursing instructor is teaching students how to use a fracture pan for appropriate patients. What are the most appropriate instructions for this procedure? Select all that apply.`,
+                options: [`Use for patients with a total hip replacement.`, `Elevate the head of the bed before placing the pan under the patient.`, `Place the wide, rounded end of the pan toward the front of the patient.`, `Assist the patient to a side-lying position prior to placing the bedpan.`, `Don sterile gloves to place the patient on the bedpan.`],
+                correctIndex: [0, 2, 3],
+                rationale: `Fracture pans are for hip patients. The wide end goes toward the front. The patient is placed side-lying first. (Head of bed is elevated *after* placement; gloves should be clean, not sterile).`
+            },
+            {
+                id: 32,
+                question: `Which tasks may be delegated to an unlicensed assistive personnel (UAP)? Select all that apply.`,
+                options: [`Irrigating a newly created colostomy`, `Collecting and testing a stool sample for occult blood`, `Digitally removing stool as a result of a fecal impaction`, `Assisting with placing a fracture pan on an immobile patient`, `Changing a preexisting, stable ostomy appliance`],
+                correctIndex: [1, 3, 4],
+                rationale: `UAPs can collect/test stool samples, assist with bedpans, and change stable ostomy appliances. New colostomy irrigation and digital removal require nursing judgment.`
+            },
+            {
+                id: 33,
+                question: `The pediatric nurse educator is teaching a group of parents about distinguishing between food allergies and food intolerance. Which of the following food items are considered to be true allergens? Select all that apply.`,
+                options: [`Egg whites`, `Shellfish`, `Peanuts`, `Corn`, `Asparagus`],
+                correctIndex: [0, 1, 2],
+                rationale: `Egg whites, shellfish, and peanuts are true food allergens prompting an immune reaction. Corn and asparagus typically cause intolerance or gas.`
+            },
+            {
+                id: 34,
+                question: `A day after abdominal surgery, a postoperative patient says, 'I'm having a problem with a lot of gas. Maybe it's the food I'm eating.' What is the appropriate response by the nurse? Select all that apply.`,
+                options: [`If the problem continues after you go home, you'll need to avoid gas-producing foods, such as beans.`, `Let's get you out of bed and walking more. This can help with your gas.`, `When was your last bowel movement? You may be a bit constipated.`, `I understand. I'll have to call the doctor for insertion of a rectal tube.`, `We may need to get you ready to go back to surgery to fix this problem.`],
+                correctIndex: [0, 1, 2],
+                rationale: `Teaching avoidance of gas-producing foods, encouraging ambulation to stimulate peristalsis, and checking for constipation are appropriate interventions.`
+            },
+            {
+                id: 35,
+                question: `The mother of a 3-month-old infant comes into the emergency department reporting severe diarrhea for 4 days. In formulating a plan of care, the nurse focuses on outcomes of which of the following? Select all that apply.`,
+                options: [`Fluid management`, `Electrolyte balance`, `Skin integrity`, `Excessive crying`, `Ease of stool passage`],
+                correctIndex: [0, 1, 2],
+                rationale: `Priorities for infants with diarrhea include fluid management (water loss), electrolyte balance (potassium), and skin integrity (diaper rash).`
+            }
+        ],
+        "Chapter 30": [
+            {
+                id: 1,
+                question: `The nurse is assessing a 16-year-old female client's knowledge of sexuality. Which of her statements indicates that she requires further teaching?`,
+                options: [`I don't practice oral sex because it could lead to sexually transmitted infections (STIs).`, `I don't have sexual intercourse because I want to remain a virgin until marriage.`, `My boyfriend and I practice abstinence because we always use a condom when we have sex.`, `My parents are lesbians, but it has not affected my sexual orientation.`],
+                correctIndex: 2,
+                rationale: `Abstinence is a state in which an individual refrains from sexual intercourse. This client is using a barrier method while having sex and needs further teaching to clarify the two concepts.`
+            },
+            {
+                id: 2,
+                question: `A client confides to the nurse that he feels guilty because when he has intercourse with his girlfriend, he pretends that she is a certain female actress. What is the nurse's most appropriate response?`,
+                options: [`This behavior is known as a minimal voyeuristic disorder and is perfectly normal.`, `Perhaps we should discuss the problems in your relationship with your girlfriend?`, `Here is a referral to a sexual counselor to help work through your guilty feelings.`, `Fantasy before or during sexual intercourse can add excitement to a relationship.`],
+                correctIndex: 3,
+                rationale: `The client needs to understand that engaging in fantasy can be stimulating for the relationship it increases self-esteem and arousal.`
+            },
+            {
+                id: 3,
+                question: `The nurse is assessing an older adult patient who states that although he can achieve an erection, he is unable to achieve an orgasm. The nurse recognizes that the client may be having difficulty completing which of the following phases of sexual arousal?`,
+                options: [`Desire`, `Excitement`, `Plateau`, `Resolution`],
+                correctIndex: 2,
+                rationale: `The client may experience an erection but is not able to achieve an orgasm. This relates to the plateau phase leading up to orgasm.`
+            },
+            {
+                id: 4,
+                question: `A 19-year-old male client asks if he is normal because he has always viewed himself as a woman, although he has acted like a man to please his parents. The nurse should provide the client with education on which concept?`,
+                options: [`Bisexual`, `Intersex`, `Transgender`, `Erectile dysfunction (ED)`],
+                correctIndex: 2,
+                rationale: `Transgender is the concept that describes a person whose gender identity is not the same as their assigned gender.`
+            },
+            {
+                id: 5,
+                question: `The nurse is discussing workplace issues with a 35-year-old client. The client tells the nurse that his boss requires him to massage her shoulders. His boss also rubs his legs, thighs, and genitals. He further states that he does not want to upset her because he needs the job. Which statement best applies to this situation?`,
+                options: [`The male is receiving sexual satisfaction from having his legs, thighs, and genitals massaged.`, `This is an example of quid pro quo sexual harassment and should be reported to a supervisor.`, `This is an example of a hostile work environment and sexual harassment and should be immediately reported to a supervisor.`, `This is not a situation of harassment because no sexual intercourse has occurred, and the client can refuse.`],
+                correctIndex: 1,
+                rationale: `This is an example of quid pro quo sexual harassment the employer makes the employee feel that he must engage in unwelcome sexual advances to maintain employment.`
+            },
+            {
+                id: 6,
+                question: `The nurse is assessing a patient in the pediatric office, when the patient's parent voices concern about the new neighbor who is a convicted sex offender. They ask for advice on how to protect their child. What is the nurse's best response?`,
+                options: [`Keep the child indoors to prevent any contact with the sex offender.`, `Discuss your concerns with the sex offender and neighbors.`, `Teach your child to never let another person touch their private parts.`, `Teach your child to avoid the house of the known sex offender.`],
+                correctIndex: 2,
+                rationale: `The best way to protect children is to teach them how to protect themselves from strangers and sexual predators, including teaching them about private parts.`
+            },
+            {
+                id: 7,
+                question: `The nurse is assessing a middle-aged patient's compliance with his medications. The client states that he has stopped all medications because he could not 'perform sexually.' Which of the following medications do NOT negatively influence his sexual activity?`,
+                options: [`Beta blocker antihypertensive medication`, `Allergy and antihistamine medications`, `First-generation antibiotics`, `Antipsychotics and antidepressants`],
+                correctIndex: 2,
+                rationale: `There is no proof that antibiotics negatively affect sexual activity.`
+            },
+            {
+                id: 8,
+                question: `The nurse feels uncomfortable when preparing to assess a patient's sexual health. Which of the following would be most important for a nurse to be able to do during the assessment?`,
+                options: [`Recognize and set aside personal biases or experiences related to sexuality.`, `Perform an accurate and comprehensive physical assessment.`, `Collect an accurate and comprehensive sexual history.`, `Acquire theoretical knowledge of sexual health concerns.`],
+                correctIndex: 0,
+                rationale: `The nurse will be challenged to confront personal biases related to sexuality and to set those aside as while working with clients.`
+            },
+            {
+                id: 9,
+                question: `The nurse has finished teaching a group of adolescents about STIs. Which of the following statements made by one of the adolescents would indicate that the teaching has been effective?`,
+                options: [`A healthcare provider can tell whether you have an STI by asking if you have any symptoms.`, `The healthcare provider can diagnose most STIs with a surgical biopsy or blood draw.`, `A healthcare provider can tell whether you have an STI by getting a detailed sexual history.`, `The healthcare provider can swab the genitals to diagnose whether a person has an STI.`],
+                correctIndex: 3,
+                rationale: `Many STIs have few or no symptoms. To find out whether a patient has an STI, you must obtain a swab culture of secretions.`
+            },
+            {
+                id: 10,
+                question: `The nurse is evaluating the treatment plan for the client with erectile dysfunction (ED). Which statement made by the client indicates treatment was successful?`,
+                options: [`I feel very good about the treatment. I am now comfortable with my sexual orientation.`, `I am happy with the treatment, as I can now maintain an erection through orgasm.`, `Now I can communicate my sexual needs to my partner without embarrassment.`, `I now know how to communicate my sexual desires with my partner.`],
+                correctIndex: 1,
+                rationale: `Men with ED have persistent or recurring inability to achieve or maintain an erection sufficient for satisfactory sexual performance. Maintaining an erection through orgasm indicates success.`
+            },
+            {
+                id: 11,
+                question: `During an initial assessment of the client's sexual orientation, the nurse may utilize the PLISSIT model. What is the first step of this model?`,
+                options: [`Provide information about sexual orientation and common alterations.`, `Plan time to discuss concerns with the client in a private, comfortable setting.`, `Permit the client to speak openly by communicating an open, accepting attitude.`, `Provide referrals to the client so they can identify resources to assist them in the future.`],
+                correctIndex: 2,
+                rationale: `The first step of the PLISSIT model, P, is to provide permission. Permission means communicating an open, accepting attitude.`
+            },
+            {
+                id: 12,
+                question: `The nurse is preparing education for the prepubescent female client on her menstrual cycle. Which of the following statements best explains the portion of the cycle when the ovum is released?`,
+                options: [`Fertilization`, `Follicular phase`, `Luteal phase`, `Menstrual phase`],
+                correctIndex: 1,
+                rationale: `The follicular phase occurs when the ovarian follicles mature until the ovum is released.`
+            },
+            {
+                id: 13,
+                question: `The nurse is providing presurgical care to a patient scheduled for a total abdominal hysterectomy as treatment for cancer. The patient says, 'I won't be a woman after surgery.' The nurse recognizes that the patient connects having a uterus with which aspect of sexuality?`,
+                options: [`Eroticism`, `Intimacy`, `Reproduction`, `Role and identity`],
+                correctIndex: 3,
+                rationale: `This patient is questioning her identity and role as a woman after removal of her uterus.`
+            },
+            {
+                id: 14,
+                question: `While admitting a young adult male into the family health clinic, the nurse asks about his occupation. The patient appears embarrassed and says, 'You're going to think I'm lazy, but I stay home with our young children while my wife works.' The nurse recognizes this patient is experiencing what type of conflict?`,
+                options: [`Sexual confusion`, `Gender role`, `Gender identity`, `Sexual orientation`],
+                correctIndex: 1,
+                rationale: `Gender roles are those behaviors society identifies as being male or female. This patient indicates conflict over being male and being the nurturer.`
+            },
+            {
+                id: 15,
+                question: `The emergency room nurse cares for a patient experiencing severe abdominal pain. When the nurse addresses the patient with the pronoun he, the patient quickly corrects the nurse, saying, 'I do not identify with a specific gender.' Which of the following statements is accurate regarding this patient's gender identity?`,
+                options: [`The patient is transgender.`, `The patient is gender nonbinary.`, `The patient is cisgender.`, `The patient is in gender transition.`],
+                correctIndex: 1,
+                rationale: `A person who identifies as gender nonbinary does not identify with a specific gender.`
+            },
+            {
+                id: 16,
+                question: `The nurse assesses a patient's medical history in a gynecology office prior to admission. As the nurse prepares the patient for a female examination, the client confides about a form of cultural practice that she has been subjected to that is illegal in the United States. What is the name of that form of cultural practice?`,
+                options: [`Genitalia piercing`, `Hysterectomy`, `Female circumcision`, `Transgender surgery`],
+                correctIndex: 2,
+                rationale: `Female circumcision, or female genital mutilation, is considered atypical and is illegal in many countries, including the United States.`
+            },
+            {
+                id: 17,
+                question: `The nurse is conducting a case meeting of an older patient in the Alzheimer's unit. The older patient has developed a close relationship with another patient in the facility. It appears that the two have become intimate recently and the family voices concerns that the patient is unable to make decisions regarding this intimate relationship. Which of the following would be an appropriate nursing intervention for this patient?`,
+                options: [`Assess whether the client is able to consent to sexual intimacy.`, `Assess and transfer one of the clients to another unit.`, `Provide privacy for the clients to engage in sexual activities.`, `Bring in the other client's family members to discuss this fully.`],
+                correctIndex: 0,
+                rationale: `Although this may be a difficult situation for the family, the relationship may be consensual. The nurse must assess if the client is able to consent.`
+            },
+            {
+                id: 18,
+                question: `The nurse is preparing to teach a group of adolescent male students about testicular self-exams. Which of the following would be an indication that the teaching was effective?`,
+                options: [`Monthly exams are necessary for early detection of lumps in the testicle.`, `Monthly exams for any changes in the testicle are a personal preference.`, `Monthly exams are not warranted if both testicles have not fully descended.`, `Monthly exams are not necessary once the male has become sexually active.`],
+                correctIndex: 1,
+                rationale: `Monthly exams are a personal preference; checking for lumps after puberty is a good idea to detect changes in the testicles.`
+            },
+            {
+                id: 19,
+                question: `The mental health nurse has assessed a male patient who has repeatedly made sexual comments and advances toward other patients. The nurse recognizes these behaviors as what possible mental health disorder?`,
+                options: [`Anxiety disorder`, `Bipolar disorder`, `Depressive disorder`, `Paranoid schizophrenia`],
+                correctIndex: 1,
+                rationale: `Clients with bipolar disorder, particularly during manic phases, are likely to be preoccupied with pleasurable activities and commonly display increased sexual activity.`
+            },
+            {
+                id: 20,
+                question: `The nurse is developing a plan of care for a female patient who expresses loss of interest in sexual intimacy with her husband following a total hysterectomy several months ago. The patient states, 'I just don't have the energy to be intimate. Besides, I don't feel like a woman anymore because I cannot have children.' What nursing diagnosis would be most appropriate for this patient?`,
+                options: [`Activity intolerance and fatigue`, `Disturbed body image`, `Ineffective sexuality patterns`, `Sexual dysfunction`],
+                correctIndex: 2,
+                rationale: `Ineffective sexuality patterns manifest as reported difficulties or alterations in sexual behavior or activities and broader concerns about sexuality.`
+            },
+            {
+                id: 21,
+                question: `A physician frequently approaches a nurse and compliments her on her appearance, including making inappropriate comments about the nurse's body shape. What is the most appropriate initial action of the nurse?`,
+                options: [`Inform the nursing supervisor of the physician's behavior.`, `Call the medical board to report the physician's behavior.`, `Document the physician's behavior and report concern to the chief of staff.`, `Inform the physician the behavior is inappropriate and unwelcome.`],
+                correctIndex: 3,
+                rationale: `The first step the nurse should take is to inform the physician that the behavior is both unwelcome and inappropriate, and the physician should be told to stop immediately.`
+            },
+            {
+                id: 22,
+                question: `The nurse is providing teaching to a group of prepubescent students regarding some common myths about sexuality and body functions. Which statement by the students is an indication that teaching was effective?`,
+                options: [`I don't need to worry about birth control or STIs during my first time.`, `Condoms are the most effective birth control and the only way I can be sure I won't get pregnant.`, `I only have to worry about being infected with an STI if I see a sore or have pain.`, `Enjoyable sexual relationships or reaching orgasm simultaneously do not indicate the quality of the relationship.`],
+                correctIndex: 3,
+                rationale: `The statement is accurate in that simultaneous orgasm and good sexual relations do not predict the quality of a relationship.`
+            },
+            {
+                id: 23,
+                question: `The nurse is interviewing a patient in the family practice clinic who has been diagnosed with pelvic inflammatory disease (PID). The patient states that she uses several methods to stay clean 'down there,' such as occasional condom use by the partner, twice-weekly douches, and taking daily bubble baths instead of showers. Which of the following practices may have increased her likelihood of this infection?`,
+                options: [`Wearing cotton underwear`, `Inconsistent condom use by the partner`, `Daily bubble baths`, `Twice-weekly douches`],
+                correctIndex: 3,
+                rationale: `Douching washes away protective bacteria that protect the vagina from infection, so this behavior will increase the patient's risk of PID.`
+            },
+            {
+                id: 24,
+                question: `The patient tells the nurse, 'My partner and I never have intercourse when I have my period because I read that it is dangerous.' What statement by the nurse is most appropriate?`,
+                options: [`You can protect the bed linens by placing protective padding under the buttocks.`, `Reaching orgasm during your period can help to relieve menstrual cramps.`, `The blood is from the uterus, not the vagina, so intercourse will not harm the vagina.`, `The increased blood flow to the pelvis will make sex more pleasurable for you.`],
+                correctIndex: 2,
+                rationale: `The most important point is to explain that intercourse will not harm the vagina so the patient can make an informed choice.`
+            },
+            {
+                id: 25,
+                question: `The nurse is providing preoperative screening for the older adult male client who is scheduled for prostate surgery due to cancer. The client states that he knows that his girlfriend will leave him now because the surgery will ruin his sex life. What statement by the nurse would be most appropriate?`,
+                options: [`I am so sorry to hear that. A close sexual relationship is so important.`, `It is possible to have a close, intimate relationship without intercourse.`, `Let's talk a little more about the ways in which your sex life has been ruined.`, `You might want to try one of the medications available to treat erectile dysfunction.`],
+                correctIndex: 2,
+                rationale: `Seeking more specific information about the patient's sex life and what he means by 'ruined' will help the nurse understand the problem.`
+            },
+            {
+                id: 26,
+                question: `The nurse is assessing an older female patient in the clinic, when the patient states that she is having issues with sexual intercourse due to lubrication. The nurse begins to use the PLISSIT model as the guideline for counseling for sexual problems. Which of the following are examples of the components of the PLISSIT model? Select all that apply.`,
+                options: [`Some women experience decreased vaginal lubrication after menopause. Tell me how well you have been lubricating.`, `Should your sexual partner be in the room to further discuss this issue and find some methods to help you?`, `Some women experience decreased vaginal lubrication because of decreased hormone levels.`, `Some women have found that using a water-soluble lubricant prior to sexual intercourse to be helpful.`, `I will send this information to your gynecologist for you to further discuss possible treatments.`],
+                correctIndex: [0, 2, 3, 4],
+                rationale: `These options correspond to P (Permission), LI (Limited Information), SS (Specific Suggestions), and IT (Intensive Therapy).`
+            },
+            {
+                id: 27,
+                question: `A 2-year-old boy has come to the well-child clinic with his mother. The mother expresses concern that her son often touches his genitals. She says, 'I have tried sitting him in a chair, smacking his hand, and telling him no, but he continues to do this. I just don't know how to make him stop.' Which of the following would be the nurse's most appropriate responses? Select all that apply.`,
+                options: [`Give him a little time. The first two years of a child's life are a time for them to explore their bodies. He'll grow out of it.`, `How often do you punish him by giving him a time-out or by using physical discipline?`, `Physical punishment, such as smacking his hand, is not the best way to modify a child's behavior.`, `It isn't unusual for him to fondle his genitals, as this is part of his exploration of his body.`, `Perhaps he needs something to do. Have you tried distracting him with new toys and other activities?`],
+                correctIndex: [0, 1, 2, 3],
+                rationale: `It is not unusual for infants and preschoolers to fondle their genitals. The mother's use of physical discipline warrants further exploration and counseling about alternative methods.`
+            },
+            {
+                id: 28,
+                question: `What are common reasons that a victim of domestic abuse might not report an incident of sexual assault? Select all that apply.`,
+                options: [`Fear that the significant other would be angry if the client reported it and repeat the assault`, `Belief that it was the client's behavior that caused the significant other to 'lose their temper'`, `Idea that the legal system couldn't prosecute the significant other for the assault`, `Desire to have the incident behind the client, as if it never happened in the first place`, `Financial independence of the client from the significant other`],
+                correctIndex: [0, 1, 2, 3],
+                rationale: `Reasons for not reporting include fear, self-blame, knowledge of low conviction rates, and desire to avoid a trial/move on. Financial *dependence* (not independence) is a reason.`
+            },
+            {
+                id: 29,
+                question: `Which of the following are considered sexual response cycle disorders? Select all that apply.`,
+                options: [`Arousal disorder`, `Dysmenorrhea`, `Orgasmic disorder`, `Low libido`, `Retrograde ejaculation`],
+                correctIndex: [0, 2, 3],
+                rationale: `Low libido, arousal disorder, and orgasmic disorder all affect the sexual response cycle.`
+            },
+            {
+                id: 30,
+                question: `The nurse is providing care to the client who was sexually assaulted. What is the nurse's best approach for collecting information surrounding the event? Select all that apply.`,
+                options: [`Use a calm, reassuring voice when asking questions of the client.`, `Ask only close family members to describe events related to the incident.`, `Provide privacy by asking questions behind a closed curtain.`, `Document the details using the patient's own words.`, `Refer the client to the sexual assault support group immediately.`],
+                correctIndex: [0, 3],
+                rationale: `Therapeutic communication and clear, unambiguous documentation using the patient's own words are essential. Privacy requires more than a curtain.`
+            },
+            {
+                id: 31,
+                question: `The nurse is providing care to a menopausal patient in the women's health clinic. The patient asks about the advantages of hormone replacement therapy (HRT). Which of the following are advantages of HRT? Select all that apply.`,
+                options: [`HRT is the most effective treatment to relieve symptoms of menopause, such as hot flashes and sleep disturbances.`, `HRT decreases the risk of heart and vascular disease, such as arteriosclerosis and myocardial infarctions.`, `HRT often prevents loss of bone density (osteoporosis) and leads to fewer hip fractures.`, `HRT prevents blood clots and certain cancers, such as breast, ovarian, and colorectal cancers.`, `HRT decreases the likelihood of cerebral vascular accidents and dementia.`],
+                correctIndex: [0, 2],
+                rationale: `HRT relieves menopause symptoms and prevents bone density loss. It actually *increases* risks for heart disease, blood clots, and certain cancers.`
+            },
+            {
+                id: 32,
+                question: `The nurse has finished teaching a class for adolescents and young adults on STIs and safe sexual practices. The nurse determines that the teaching has been effective when class participants make which statements? Select all that apply.`,
+                options: [`It is important for me to avoid STIs, so I will get a prescription for birth control pills.`, `I cannot contract an STI if we only perform oral sex on one another.`, `I should see my provider to be tested if I experience burning on urination.`, `If I contract an STI, it isn't my fault because I had sex with only one person.`, `I need to have a discussion with my sexual partner about our past sexual histories.`],
+                correctIndex: [2, 4],
+                rationale: `Seeing a provider for symptoms and discussing sexual history are correct actions. Pills do not prevent STIs, and oral sex can transmit STIs.`
+            },
+            {
+                id: 33,
+                question: `The nurse is teaching reproduction to a class of adolescents. In the class, the nurse teaches about what female reproductive organs that become engorged and sensitive during stimulation? Select all that apply.`,
+                options: [`Bartholin's glands`, `Clitoris`, `Labia minora`, `Labia majora`, `Vagina`],
+                correctIndex: [1, 2],
+                rationale: `The clitoris and labia minora become engorged and increase in sensitivity during sexual stimulation.`
+            }
+        ],
+        "Chapter 33": [
+            {
+                id: 1,
+                question: `The nurse is providing care to a pregnant woman in preterm labor. The client is 32 weeks pregnant. Initially, the client states, "I've gained 30 pounds. That should be enough for the baby. Everything will be okay if I deliver now." After teaching the client about fetal development, the nurse will know her teaching is effective if the client makes which of the following statements?`,
+                options: [`"The baby's lungs are well developed now, but he will be at increased risk for sudden infant death syndrome (SIDS) if I deliver early."`, `"We should try to stop this labor now because the baby will be born with sleep apnea if I deliver this early."`, `"If I deliver this early, my baby is at risk for respiratory distress syndrome (RDS), a condition that can be life-threatening."`, `"Thanks for reassuring me; I was pretty sure there isn't much risk to the baby this far along in my pregnancy."`],
+                correctIndex: 2,
+                rationale: `Premature infants (younger than 35 weeks' gestation) are born before the alveolar surfactant system is fully developed and are at high risk for RDS.`
+            },
+            {
+                id: 2,
+                question: `While a client is receiving hygiene care, the chest tube becomes disconnected from the water-seal chest drainage unit (CDU). Which action should the nurse take immediately?`,
+                options: [`Clamp the chest tube close to the insertion site with rubber-shod hemostats.`, `Set up a new drainage system, and quickly connect it to the chest tube.`, `Have the client take a deep breath while the nurse reconnects the tube to the CDU.`, `Place the disconnected end into a bottle of sterile water.`],
+                correctIndex: 3,
+                rationale: `If the chest tube disconnects, the nurse should establish a temporary water seal by immersing the open end of the chest tube in a bottle of sterile water.`
+            },
+            {
+                id: 3,
+                question: `The nurse administers an antitussive/expectorant cough preparation to a client with bronchitis. Which of the following responses indicates to the nurse that the medication is effective?`,
+                options: [`The amount of sputum the client expectorates decreases with each dose administered.`, `Cough is completely suppressed, and the client is able to sleep through the night.`, `Dry, unproductive cough is reduced, but the client's voluntary coughing is more productive.`, `Involuntary coughing produces large amounts of thick yellow sputum.`],
+                correctIndex: 2,
+                rationale: `The goal of an antitussive/expectorant combination is to reduce the frequency of dry, unproductive coughing while making voluntary coughing more productive.`
+            },
+            {
+                id: 4,
+                question: `The nurse is admitting to the medical-surgical unit an older adult with a diagnosis of pulmonary hypertension and right-sided heart failure. The client is complaining of shortness of breath, and the nurse observes conversational dyspnea. What is the first action the nurse should take?`,
+                options: [`Review and implement the primary care provider's prescriptions for treatments.`, `Perform a quick physical examination of breathing, circulation, and oxygenation.`, `Gather a thorough medical history, including current symptoms, from the family.`, `Administer supplemental oxygen to the client through a nasal cannula.`],
+                correctIndex: 1,
+                rationale: `The first action the nurse should take is to make a quick assessment of the adequacy of breathing, circulation, and oxygenation to determine the most appropriate intervention.`
+            },
+            {
+                id: 5,
+                question: `The nurse is providing care for a young adult client with an intracranial hemorrhage secondary to a closed head injury. During the assessment, the nurse notices that the client's respirations follow a cycle progressively increasing in depth, then progressively decreasing in depth, followed by a period of apnea. Which of the following appropriately describes this respiratory pattern?`,
+                options: [`Biot's breathing`, `Kussmaul's respirations`, `Sleep apnea`, `Cheyne-Stokes respirations`],
+                correctIndex: 3,
+                rationale: `This respiratory pattern is known as Cheyne-Stokes respirations. It is often associated with damage to the medullary respiratory center or high intracranial pressure.`
+            },
+            {
+                id: 6,
+                question: `The nurse is providing care to the adult client receiving mechanical ventilation who has a tracheostomy. The client has a pulse oximetry reading at 85%, heart rate at 113 beats/min, and respiratory rate at 30 breaths/min. The client has become restless and has labored gurgling respirations. The nurse auscultates bilateral crackles and rhonchi. What is the most appropriate nursing action at this time?`,
+                options: [`Call the respiratory therapist for ventilator assessment.`, `Provide sterile endotracheal suctioning.`, `Provide sterile tracheostomy and stoma care.`, `Notify the physician of the client's signs of fluid overload.`],
+                correctIndex: 1,
+                rationale: `Signs that indicate the need for suctioning include restlessness, cyanosis, labored respirations, decreased oxygen saturation, and visible secretions.`
+            },
+            {
+                id: 7,
+                question: `Which of the following best describes the function of type 1 alveolar cells?`,
+                options: [`They add moisture to the inhaled air in the lungs.`, `They open the airway during breathing to allow air to move.`, `They facilitate gas exchange in the lungs.`, `They produce surfactant to lubricate the lungs.`],
+                correctIndex: 2,
+                rationale: `Type 1 alveolar cells within the lungs are the gas exchange cells.`
+            },
+            {
+                id: 8,
+                question: `The nurse is providing smoking-cessation education to an older client with emphysema. The client states, "My doctor wants me to quit smoking. It's too late now, though. I already have lung problems." Which of the following would be the best response to his statement?`,
+                options: [`"You should quit so your family does not get sick from exposure to secondhand smoke."`, `"You will need to use an oxygen tank, but remember it is a fire hazard to smoke with the oxygen tank in your home."`, `"Once you stop smoking, your body will begin to repair some of the damage to your lungs."`, `"You should ask your primary care provider for a prescription for a nicotine patch to help you quit."`],
+                correctIndex: 2,
+                rationale: `Once a person stops smoking, the body begins to repair the damage. Even long-time smokers can benefit from smoking cessation.`
+            },
+            {
+                id: 9,
+                question: `The nurse is preparing to administer medication to the client experiencing an asthma exacerbation. Which of the following medications would improve the respiratory function of the client?`,
+                options: [`Opioid`, `Vasodilator`, `Anti-anxiety medication`, `Bronchodilator`],
+                correctIndex: 3,
+                rationale: `Bronchodilators relax the smooth muscles lining airways.`
+            },
+            {
+                id: 10,
+                question: `When using sterile technique to perform care of a new tracheostomy, which of the following is correct?`,
+                options: [`Cleanse the area with hot, soapy water and rinse well.`, `Place the client in a semi-Fowler's position, if possible.`, `Clean the stoma under the faceplate with hydrogen peroxide.`, `Cut a slit in sterile 4x4 inch gauze halfway through to make a dressing.`],
+                correctIndex: 1,
+                rationale: `Semi-Fowler's position promotes lung expansion and oxygenation. Do not cut gauze (fibers can act as foreign bodies).`
+            },
+            {
+                id: 11,
+                question: `A client is unable to breathe independently and is now on mechanical ventilation. Which of the following is a correct nursing intervention for maintenance?`,
+                options: [`Keep the head of the bed flat for 6 hours.`, `Avoid using mouth rinses or mouthwashes.`, `Provide the client with a paper and pencil or letter board.`, `Drain condensation into the humidifier when it collects in the tubing.`],
+                correctIndex: 2,
+                rationale: `The client being mechanically ventilated is unable to speak. An alternative method of communication must be used.`
+            },
+            {
+                id: 12,
+                question: `The nurse is providing smoking-cessation counseling to a current smoker with a 20 pack-year history. The client explains that they know a guy who quit smoking by using e-cigarettes. Which of the following is true about e-cigarettes?`,
+                options: [`E-cigarettes do not contain the cancer-causing chemicals that other forms of tobacco do.`, `E-cigarette use is increasing.`, `E-cigarettes and other forms of tobacco can be used simultaneously.`, `E-cigarettes are an effective smoking-cessation aid.`],
+                correctIndex: 1,
+                rationale: `There has been a significant increase in the use of e-cigarettes. They are not FDA-approved cessation aids and concurrent use is harmful.`
+            },
+            {
+                id: 13,
+                question: `A nurse is preparing to obtain a sputum specimen from an adult client. Which of the following nursing actions will facilitate obtaining the specimen?`,
+                options: [`Limiting fluid intake prior to collection`, `Having the client take deep breaths`, `Asking the client to spit into the collection container`, `Asking the client to obtain the specimen after eating`],
+                correctIndex: 1,
+                rationale: `The client should breathe deeply for 3-4 breaths, hold, and cough. Deep breathing helps mobilize secretions.`
+            },
+            {
+                id: 14,
+                question: `A nurse is suctioning a client via an open-system tracheostomy tube. When suctioning, the nurse must limit the suctioning time to a maximum of:`,
+                options: [`5 seconds.`, `15 seconds.`, `30 seconds.`, `45 seconds.`],
+                correctIndex: 1,
+                rationale: `Hypoxemia and tissue trauma can be caused by prolonged suctioning. Limit the pass to no longer than 15 seconds.`
+            },
+            {
+                id: 15,
+                question: `The nurse is caring for a 6-month-old infant diagnosed with respiratory syncytial virus (RSV) infection. What consideration will most influence the nurse's plan of care?`,
+                options: [`Infants breathe more rapidly than adults.`, `Infants' airways are narrower and easily obstructed.`, `Infants' lower hemoglobin (HgB) levels reduce oxygenation.`, `Infants have enlarged tonsils and adenoids.`],
+                correctIndex: 1,
+                rationale: `Narrower airways mean copious secretions can easily cause obstruction, so mobilizing secretions is critical.`
+            },
+            {
+                id: 16,
+                question: `The nurse is providing care for a client admitted with a diagnosis of muscular dystrophy resulting in inadequate muscle strength to draw enough air into the lungs. What nursing diagnosis would be most appropriate for this client?`,
+                options: [`Ineffective breathing pattern`, `Ineffective airway clearance`, `Impaired gas exchange`, `Impaired spontaneous ventilation`],
+                correctIndex: 3,
+                rationale: `Impaired spontaneous ventilation is appropriate because the client's muscle strength is inadequate to maintain breathing without external support.`
+            },
+            {
+                id: 17,
+                question: `The nurse is planning care for an older adult client newly admitted with a medical diagnosis of pneumonia and a nursing diagnosis of ineffective airway clearance. Which of the following is the nurse's priority intervention?`,
+                options: [`Teach the importance of pneumonia immunization.`, `Teach coughing and deep-breathing exercises.`, `Position the client to optimize maximum ventilation.`, `Encourage the use of an incentive spirometer every hour.`],
+                correctIndex: 2,
+                rationale: `The highest priority is to optimize ventilation as soon as the client is admitted. Positioning is an immediate intervention.`
+            },
+            {
+                id: 18,
+                question: `The nurse is preparing to obtain sputum specimens from several clients. Which of the following clients would the nurse collect a sputum specimen from without using a suction catheter?`,
+                options: [`The client with a newly placed tracheostomy`, `The client with an endotracheal tube`, `The client with late-stage amyotrophic lateral sclerosis`, `The client admitted with chronic bronchitis`],
+                correctIndex: 3,
+                rationale: `The client with chronic bronchitis, unless otherwise compromised, would be able to expectorate a specimen without suctioning.`
+            },
+            {
+                id: 19,
+                question: `The client was admitted to the intensive care unit (ICU) for respiratory acidosis secondary to smoke inhalation and exposure to caustic gases. After placement of an endotracheal tube and connection to a mechanical ventilator, the arterial blood gas results are pH = 7.28; partial pressure of oxygen (PaO2) = 85; partial pressure of carbon dioxide (PaCO2) = 60. What changes to care does the nurse anticipate?`,
+                options: [`Wean the client from the ventilator.`, `Increase the concentration of oxygen delivered.`, `Decrease the concentration of oxygen delivered.`, `Increase the number of breaths per minute on the ventilator.`],
+                correctIndex: 3,
+                rationale: `Increasing the number of breaths per minute will help the client blow off more carbon dioxide, improving the respiratory acidosis.`
+            },
+            {
+                id: 20,
+                question: `The nurse is caring for a client diagnosed with pneumonia, teaching them how to cough and deep-breathe. The client asks, "Why is drinking fluids so important?" What is the nurse's best response?`,
+                options: [`"The doctor ordered increased fluid intake."`, `"Fluids prevent pathogens from growing in your lungs."`, `"Fluids help to flush infection away so it doesn't grow in your lungs."`, `"Fluids make secretions thin, making them easier to cough up."`],
+                correctIndex: 3,
+                rationale: `Fluids help to thin secretions and keep them from becoming thick and glue-like, making them easier to mobilize.`
+            },
+            {
+                id: 21,
+                question: `The nurse is caring for four clients on a well-staffed medical-surgical unit. Of the four clients, which is likely to have the best lung function and lowest risk for acute lung complications?`,
+                options: [`24-year-old client 1 day post-op who diligently uses the incentive spirometer`, `62-year-old client who is awaiting discharge who walks 2 miles each morning`, `34-year-old client smoker who is 2 days post-op`, `16-year-old client visitor who is overweight and does not exercise regularly`],
+                correctIndex: 1,
+                rationale: `Endurance training and regular exercise minimize respiratory system changes. This client is physically conditioned.`
+            },
+            {
+                id: 22,
+                question: `Which procedure can the nurse safely delegate to an unlicensed assistive personnel (UAP) who is knowledgeable and experienced in the procedure?`,
+                options: [`Suctioning the newly placed tracheostomy tube`, `Suctioning the endotracheal tube`, `Suctioning the laryngopharynx`, `Suctioning the oral cavity`],
+                correctIndex: 3,
+                rationale: `The UAP can use a Yankauer tube to suction the oral cavity. Deeper suctioning requires sterile technique and nursing assessment.`
+            },
+            {
+                id: 23,
+                question: `A nurse who is trained to insert oropharyngeal airways is inserting an airway in a client to prevent airway obstruction. Which of the following is an appropriate action during oropharyngeal airway insertion?`,
+                options: [`Choose an airway length equal to the distance from the earlobe to the front of teeth.`, `Recognize that an oropharyngeal airway is appropriate for a conscious client.`, `Hyperextend the neck prior to insertion.`, `After insertion, tape the airway in place and position the client on their side.`],
+                correctIndex: 2,
+                rationale: `Unless contraindicated, mild hyperextension allows the airway to slide naturally toward the pharynx.`
+            },
+            {
+                id: 24,
+                question: `The nurse is caring for a client requiring a mechanical ventilator. When checking the inline thermometer, the nurse finds what temperature acceptable?`,
+                options: [`78°F`, `84°F`, `96°F`, `105°F`],
+                correctIndex: 2,
+                rationale: `The temperature should be near body temperature, so 96°F would be acceptable.`
+            },
+            {
+                id: 25,
+                question: `The student nurse observes the staff nurse providing care to a client with a chest tube. Which of the nurse's actions should the student recognize as incorrect and report to the nursing instructor?`,
+                options: [`Recording drainage from chest tube as output`, `Securing the chest tube to the chest tube dressing`, `Checking the water seal chamber for bubbling`, `Milking the chest tube to promote drainage`],
+                correctIndex: 3,
+                rationale: `Milking the chest tube is not an evidence-based practice and should not be done.`
+            },
+            {
+                id: 26,
+                question: `The nurse is caring for a client on mechanical ventilation with a water-seal chest tube in place. The nurse recognizes which of the following as abnormal?`,
+                options: [`The water-seal chamber's fluid level increases on inspiration and decreases on exhalation.`, `The water-seal chamber's fluid level decreases on exhalation and increases on inhalation.`, `There is an absence of bubbling in the bottom of the water-seal chamber.`, `The client's respirations are rhythmic.`],
+                correctIndex: 0,
+                rationale: `In a mechanically ventilated patient, fluctuations are opposite to spontaneous breathing. Increasing on inspiration (normal for spontaneous) is abnormal for a vented patient.`
+            },
+            {
+                id: 27,
+                question: `The nurse is counseling a 17-year-old client on smoking cessation. The nurse should include which of the following helpful tips in their education? Select all that apply.`,
+                options: [`"Keep healthy snacks or gum available to chew instead of smoking a cigarette."`, `"Don't tell anyone that you are trying to quit until you are confident of your success."`, `"Plan a time to quit when you will not have many other demands or stressors in your life."`, `"Reward yourself with an activity you enjoy when you quit smoking."`, `"Ask your physician for a prescription for smoking-cessation medications."`],
+                correctIndex: [0, 2, 3],
+                rationale: `Distraction, timing (low stress), and self-rewards are effective strategies. Support systems are encouraged, not hiding the attempt.`
+            },
+            {
+                id: 28,
+                question: `The nurse is assessing the client with a history of chronic obstructive pulmonary disease (COPD). At this time, the client's pulse oximetry reading is 97%. What other findings would indicate adequate tissue and organ oxygenation? Select all that apply.`,
+                options: [`Normal urine output`, `Strong peripheral pulses`, `Clear breath sounds bilaterally`, `Pink mucous membranes`, `Abnormal muscle twitching`],
+                correctIndex: [0, 1, 3],
+                rationale: `Adequate oxygenation is demonstrated by organ function (urine output), circulation (pulses), and color (mucous membranes).`
+            },
+            {
+                id: 29,
+                question: `The nurse is teaching a client about their chest drainage system. Which of the following should the nurse include in the teaching? Select all that apply.`,
+                options: [`Perform frequent coughing and deep-breathing exercises.`, `Sit up in a chair, but do not walk while the drainage system is in place.`, `Get out of bed independently as often as possible.`, `Immediately notify the nurse of any increased shortness of breath.`, `If the tube becomes disconnected, pinch it off, and use your call light to get help.`],
+                correctIndex: [0, 3],
+                rationale: `Coughing/deep breathing helps re-expansion. Shortness of breath indicates a problem. Clients can walk (don't restrict), but usually need assistance. Never pinch off the tube.`
+            },
+            {
+                id: 30,
+                question: `When providing safety education to the parent of a toddler, the nurse would inform the parent that based on the child's developmental stage, they are at high risk for which of the following factors that influence oxygenation? Select all that apply.`,
+                options: [`Frequent, serious respiratory infections`, `Airway obstruction from aspiration of small objects`, `Drowning in small amounts of water`, `Development of asthma`, `Frequent bouts of tonsillitis`],
+                correctIndex: [1, 2, 4],
+                rationale: `Toddlers are at risk for aspiration, drowning, and tonsillitis (enlarged tonsils/adenoids). Serious infections are less frequent than in infancy.`
+            },
+            {
+                id: 31,
+                question: `Obesity is associated with higher risk for which of the following conditions that affect the pulmonary and cardiovascular systems? Select all that apply.`,
+                options: [`Reduced alveolar-capillary gas exchange`, `Lower respiratory tract infections`, `Sleep apnea`, `Hypertension`, `Atherosclerosis`],
+                correctIndex: [1, 2, 3, 4],
+                rationale: `Obesity increases risk for respiratory infections (poor ventilation), sleep apnea, hypertension, and atherosclerosis. It does not directly reduce gas exchange at the alveolar level.`
+            },
+            {
+                id: 32,
+                question: `Which of the following is/are accurate about nasotracheal suctioning? Select all that apply.`,
+                options: [`Apply suction for no longer than 15 seconds during a single pass.`, `Apply suction while inserting and removing the catheter.`, `Reapply oxygen between suctioning passes for clients on a ventilator.`, `Gently rotate the suction catheter as you remove it.`, `This may be delegated to an LPN on the unit.`],
+                correctIndex: [0, 3],
+                rationale: `Limit to 15 seconds and rotate while removing. Suction is *not* applied during insertion. Reapplying oxygen applies to vent clients but isn't specific to nasotracheal technique itself (usually endotracheal).`
+            },
+            {
+                id: 33,
+                question: `Which of the following factors influence normal lung volumes and capacities? Select all that apply.`,
+                options: [`Age`, `Race`, `Body size`, `Activity level`, `Environment`],
+                correctIndex: [0, 2, 3],
+                rationale: `Lung volumes vary with body size, age, and exercise (activity level).`
+            },
+            {
+                id: 34,
+                question: `Of the following interventions, which of may reduce the risk of postoperative atelectasis? Select all that apply.`,
+                options: [`Administer bronchodilators.`, `Apply low-flow oxygen.`, `Encourage coughing and deep breathing.`, `Administer pain medication.`, `Suction the airway.`],
+                correctIndex: [2, 3],
+                rationale: `Coughing/deep breathing mobilizes secretions. Pain medication allows the patient to breathe deeply without pain.`
+            },
+            {
+                id: 35,
+                question: `The nurse assesses a client diagnosed with pneumonia. Which data findings indicate that the client is not oxygenating adequately? Select all that apply.`,
+                options: [`Oxygen saturation 87%`, `Arterial blood gas pH 7.33`, `Respiratory rate 52 breaths/min`, `Fine rales in the left lower lobe`, `Cyanosis of the nail beds and lips`],
+                correctIndex: [0, 2, 4],
+                rationale: `Low saturation, tachypnea (52), and cyanosis are signs of inadequate oxygenation. Rales indicate airway status, not necessarily oxygenation failure.`
+            },
+            {
+                id: 36,
+                question: `The nurse is caring for a client in an outpatient setting. The client explains that they don't want the flu vaccination because if they gets influenza, they will just take medications to cure it. Which of the following are correct about influenza?`,
+                options: [`Antiviral medications are effective within the first 72 hours of influenza infection.`, `The most effective strategy for preventing influenza is vaccination.`, `It is important to distinguish influenza and upper-respiratory infection.`, `Aspirin is the preferred treatment for influenza symptoms.`, `Clients with influenza should cough throughout expiration in several short bursts to clear secretions.`],
+                correctIndex: [1, 2],
+                rationale: `Vaccination is best prevention. Distinguishing flu from URI is important because antivirals work for flu (if early). Aspirin is contraindicated (Reye's).`
+            }
+        ],
+        "Chapter 34": [
+            {
+                id: 1,
+                question: `The nurse is triaging clients in a busy emergency department. The nurse knows that chest pain should be treated seriously and accurately assessed. After assessment, which of the following clients reporting chest pain should be prioritized for intervention?`,
+                options: [`42-year-old female reporting mild, intermittent chest pain and an "aching" jaw`, `26-year-old male reporting right-sided chest pain that increases on inhalation`, `53-year-old female receiving cancer treatment with unilateral calf swelling and warmth`, `49-year-old male chronic smoker reporting chest pain after shoveling snow that has improved since coming to the hospital`],
+                correctIndex: 0,
+                rationale: `Women often present with atypical symptoms like jaw pain and mild chest pain. This needs immediate evaluation to rule out MI. The others are less likely to be an acute cardiac event (pleurisy, DVT, stable angina).`
+            },
+            {
+                id: 2,
+                question: `The nurse is preparing the care plan for a middle-aged client admitted to the intensive care unit for acute myocardial infarction (MI). The client's symptoms include tachycardia, palpitations, anxiety, jugular vein distention, and fatigue. Which of the following nursing diagnoses is most appropriate?`,
+                options: [`Decreased cardiac output`, `Impaired tissue perfusion`, `Impaired cardiac contractility`, `Impaired activity tolerance`],
+                correctIndex: 0,
+                rationale: `The symptoms (tachycardia, JVD, fatigue) are classic signs of decreased cardiac output.`
+            },
+            {
+                id: 3,
+                question: `The nurse is assessing a client and asks if they have any chronic stress. The client wants to know how chronic stress affects the body. The nurse responds that when the body is under stress, it releases a chemical that increases the heart rate and the tendency of the blood to clot. Which of the following chemicals is the nurse discussing?`,
+                options: [`Histamine`, `Catecholamines`, `Cortisol`, `Protease`],
+                correctIndex: 1,
+                rationale: `Catecholamines (epinephrine/norepinephrine) are released during stress, increasing HR and clotting tendency.`
+            },
+            {
+                id: 4,
+                question: `The nurse is teaching a pregnant woman about the increased oxygen demand that develops during pregnancy. The nurse knows the client comprehends the teaching when she makes the following statement:`,
+                options: [`"I may need to drink more fluids to make more oxygen."`, `"I may need to take an iron supplement so that I am not anemic."`, `"I will need a multivitamin supplement for several months."`, `"I will need to eat more fruits and vegetables."`],
+                correctIndex: 1,
+                rationale: `Pregnancy increases blood volume and oxygen demand. Iron is needed to produce hemoglobin to carry that oxygen and prevent anemia.`
+            },
+            {
+                id: 5,
+                question: `The nurse is providing care to the client who is 3 days status post-cardiac bypass grafting. The client has incisions to their medial right leg from the graft harvest of the saphenous vein. The client complains of warmth and tenderness to their right calf. Staples are intact along the incision, and there is no drainage. Vital signs are stable. The nurse would suspect that the client has what kind of complication?`,
+                options: [`Deep vein thrombosis (DVT)`, `Dehiscence of the wound`, `Internal bleeding`, `Infection at the incisional site`],
+                correctIndex: 0,
+                rationale: `Warmth, tenderness, and calf pain are classic signs of DVT, a common complication after surgery and immobility.`
+            },
+            {
+                id: 6,
+                question: `A nurse is performing CPR on an adult. When performing chest compressions, the nurse understands that the compression rate should be at least:`,
+                options: [`60 times a minute.`, `80 times a minute.`, `100 times a minute.`, `120 times a minute.`],
+                correctIndex: 2,
+                rationale: `Current guidelines recommend a compression rate of at least 100 beats per minute (100-120).`
+            },
+            {
+                id: 7,
+                question: `A client with heart failure has BP 120/60 mm Hg, heart rate (HR) 64 beats/min, respiratory rate (RR) 18 breaths/min, temperature (T) 97.6°F, coarse crackles bilaterally, and 3+ edema to the lower extremities. The most appropriate nursing diagnosis for this client is:`,
+                options: [`Impaired gas exchange.`, `Excess fluid volume.`, `Ineffective tissue perfusion.`, `Deficient knowledge.`],
+                correctIndex: 1,
+                rationale: `Edema and crackles (fluid in lungs) are key indicators of excess fluid volume.`
+            },
+            {
+                id: 8,
+                question: `The client diagnosed with inadequate closure of the mitral valve is scheduled for surgery and asks the nurse, "Why does it matter if my valve leaks?" What is the nurse's best response to explain why this mitral valve needs to be repaired?`,
+                options: [`"Blood backflows from the left ventricle to the left atrium, reducing available blood flowing to the body."`, `"Blood backflows from the right ventricle to the right atrium, reducing available blood flow to the lungs."`, `"Blood backflows from the aorta into the left ventricle, reducing blood pressure and causing dizziness."`, `"Blood backflows from the pulmonary artery into the right ventricle, reducing blood flow to the lungs."`],
+                correctIndex: 0,
+                rationale: `The mitral valve is between the left atrium and left ventricle. Regurgitation causes blood to flow back into the atrium, reducing forward flow to the body.`
+            },
+            {
+                id: 9,
+                question: `The nurse is providing teaching for a weight-loss group on the cardiac dangers of obesity. Which statement, if made by the nurse, would be incorrect?`,
+                options: [`"Obesity increases the risk of atherosclerosis."`, `"Obesity increases the risk of hypertension."`, `"Obesity can reduce pumping action of the heart."`, `"Obesity can diminish tissue perfusion."`],
+                correctIndex: 3,
+                rationale: `Obesity increases cardiac workload, but it does not inherently diminish tissue perfusion unless heart failure develops. Options 1, 2, and 3 are correct statements.`
+            },
+            {
+                id: 10,
+                question: `The nurse is providing discharge teaching to a client diagnosed with hypertension and atherosclerosis. The nurse knows that all of the following teaching points are accurate, except:`,
+                options: [`Yoga may decrease heart rate and improve blood pressure.`, `As the body ages, cardiovascular decline is expected and cannot be controlled.`, `Consuming a diet low in fat, cholesterol, and sodium can support cardiovascular health.`, `Even small amounts of tobacco can increase cardiovascular risk.`],
+                correctIndex: 1,
+                rationale: `This statement is false. While age is a risk factor, decline can be slowed or controlled through diet, exercise, and lifestyle changes.`
+            },
+            {
+                id: 11,
+                question: `The nurse is assessing an adult client diagnosed with chronic heart failure 10 years ago. Which finding would indicate poor perfusion to the tissues?`,
+                options: [`Blood pressure reading of 102/64 mm Hg`, `Absence of hair on the lower legs and feet`, `Pulse rate of 104 beats/min`, `Shortness of breath when supine`],
+                correctIndex: 1,
+                rationale: `Hair loss on the lower extremities is a classic sign of chronic poor arterial perfusion.`
+            },
+            {
+                id: 12,
+                question: `The nurse is reviewing the results of the client's laboratory findings and notes an elevated C-reactive protein (CRP) level. What does this indicate?`,
+                options: [`The client had a myocardial infarction.`, `The client has inflammation in the body.`, `The client has reduced cardiac output.`, `The client's diet is high in cholesterol.`],
+                correctIndex: 1,
+                rationale: `CRP is a non-specific marker of inflammation. It is often elevated in cardiovascular disease but indicates general inflammation.`
+            },
+            {
+                id: 13,
+                question: `The nurse analyzes the client's electrocardiogram (ECG) and compares it with a baseline ECG recorded before the client began having chest pain. What finding indicates a problem with the ventricle?`,
+                options: [`Prolonged QRS segment`, `Elevated P wave`, `Absence of T wave`, `Prolonged P-R interval`],
+                correctIndex: 0,
+                rationale: `The QRS complex represents ventricular depolarization. A prolonged QRS indicates a conduction delay or problem in the ventricles.`
+            },
+            {
+                id: 14,
+                question: `The nurse administers a beta-adrenergic agent to a client with congestive heart failure. What assessment findings would indicate that the drug is working?`,
+                options: [`Heart rate changes from 92 beats/min to 76 beats/min.`, `Cardiac monitor shows narrowing of the QRS segment.`, `Client experiences tingling in the fingers and toes.`, `Urine output has increased to equal input.`],
+                correctIndex: 0,
+                rationale: `Beta-blockers decrease heart rate and contractility. A reduction in HR indicates the medication is effective.`
+            },
+            {
+                id: 15,
+                question: `The nurse is providing care to the client who complains of chest pain after large meals and strenuous exercise. The pain is mild and relieved with rest. What is the most appropriate nursing intervention with this client's pain?`,
+                options: [`Immediately administer a vasodilator at the onset of the chest pain.`, `Have the client recognize triggers and keep a log of any symptoms.`, `Obtain CRP and a venogram to rule out myocardial infarction.`, `Prepare the client for emergency cardiac catheterization.`],
+                correctIndex: 1,
+                rationale: `This describes stable angina (predictable, relieved by rest). The priority is identifying triggers to manage the condition.`
+            },
+            {
+                id: 16,
+                question: `For which client might the nurse use the nursing diagnosis risk for ineffective renal tissue perfusion?`,
+                options: [`The client with hypertension who is noncompliant with medication administration`, `The client with angina who takes nitroglycerine when experiencing chest pain`, `The client diagnosed with pneumonia, becoming short of breath with activity`, `The client with a hemorrhagic stroke secondary to head trauma`],
+                correctIndex: 0,
+                rationale: `Uncontrolled hypertension damages the renal arteries, placing the client at high risk for renal failure (ineffective renal perfusion).`
+            },
+            {
+                id: 17,
+                question: `The nurse is planning care for an elderly client diagnosed with end-stage heart failure and a nursing diagnosis of decreased cardiac output secondary to ineffective left ventricular function. What outcome would the nurse plan for this client to measure improvement in cardiac output?`,
+                options: [`Brisk capillary refill in feet bilaterally`, `Heart rate within expected range`, `Breath sounds clear with no shortness of breath`, `Regular pulse rhythm`],
+                correctIndex: 2,
+                rationale: `Left ventricular failure causes backup into the lungs (pulmonary edema). Clear breath sounds indicate that the fluid backup is resolving and cardiac output is improving.`
+            },
+            {
+                id: 18,
+                question: `The nurse administers sublingual nitroglycerin to a client diagnosed with angina. When the client's chest pain is not relieved, the nurse prepares to give a second nitroglycerin tablet. The nurse knows that when administering vasodilators, it is a priority to:`,
+                options: [`Notify the physician.`, `Monitor the heart rate.`, `Monitor blood pressure.`, `Place the client on a cardiorespiratory monitor.`],
+                correctIndex: 2,
+                rationale: `Nitroglycerin causes vasodilation, which can drop blood pressure significantly. Monitoring BP before each dose is the safety priority.`
+            },
+            {
+                id: 19,
+                question: `The nurse is caring for a client with reduced perfusion to the extremities. The nurse evaluates the client and finds the response to therapy is not optimal. What lifestyle change does the nurse suspect is contributing to the lack of response?`,
+                options: [`Following a vegetarian diet`, `Taking daily brisk walks`, `Ingesting 1,500 mL of fluid per day`, `Smoking cessation when the diagnosis was received`],
+                correctIndex: 2,
+                rationale: `1,500 mL is likely insufficient. Dehydration increases blood viscosity and hinders perfusion. A higher intake is generally recommended unless contraindicated.`
+            },
+            {
+                id: 20,
+                question: `The nurse plans to maintain hydration for the client at risk for thrombus formation. What evaluation finding is an indicator that the intervention is successful?`,
+                options: [`The client denies pain in the lower legs.`, `The client denies chest pain or difficulty breathing.`, `Urine output exceeds 1,500 mL per 24-hour period.`, `There is a weight gain of 5 pounds within 24 hours.`],
+                correctIndex: 2,
+                rationale: `Adequate hydration is best evaluated by urine output. >1,500 mL/day generally indicates good hydration status.`
+            },
+            {
+                id: 21,
+                question: `The nurse is preparing client teaching for a client diagnosed with peripheral edema secondary to right-sided heart failure. What intervention will promote circulation and reduce edema in the lower extremities?`,
+                options: [`Encourage frequent ambulation.`, `Administer antihypertensive medications.`, `Encourage vigorous exercise for 30 minutes a day.`, `Administer oxygen when the client is short of breath.`],
+                correctIndex: 0,
+                rationale: `Ambulation engages the muscle pump in the legs, helping to return venous blood to the heart and reduce edema.`
+            },
+            {
+                id: 22,
+                question: `Which of the following medications would the nurse expect to be included in the treatment of a client with congestive heart failure (CHF)? Select all that apply.`,
+                options: [`Nitrates`, `Beta-adrenergic agents`, `Anticoagulants`, `Diuretics`, `Statins`],
+                correctIndex: [1, 3],
+                rationale: `Beta-blockers slow the heart and reduce workload. Diuretics remove excess fluid. These are core treatments for CHF.`
+            },
+            {
+                id: 23,
+                question: `As the nurse caring for a client who has suffered myocardial infarction that has damaged the sinoatrial (SA) node, you should plan to monitor for which of the following potential complications? Select all that apply.`,
+                options: [`Decreased heart rate`, `Increased heart rate`, `Decreased cardiac output`, `Decreased strength of ventricular contractions`, `Increased peripheral edema`],
+                correctIndex: [0, 2],
+                rationale: `The SA node is the pacemaker. Damage leads to bradycardia (decreased rate) and consequently decreased cardiac output.`
+            },
+            {
+                id: 24,
+                question: `The nurse is assessing the client's home medication and notes that although the client denies hypertension, there are several antihypertensive medications. Which of the following medications lower blood pressure? Select all that apply.`,
+                options: [`Atenolol`, `Digoxin`, `Lisinopril`, `Nifedipine`, `Warfarin`],
+                correctIndex: [0, 2, 3],
+                rationale: `Atenolol (beta blocker), Lisinopril (ACE inhibitor), and Nifedipine (calcium channel blocker) are all antihypertensives.`
+            },
+            {
+                id: 25,
+                question: `The nurse is assessing a healthy older client who comes to the health clinic and reports not feeling like themself. The client complains of increased fatigue when walking up stairs and performing normal household activities. What are normal physiological changes in the cardiovascular system that occur with aging? Select all that apply.`,
+                options: [`Cardiac contractile strength is reduced.`, `Heart valves become more rigid.`, `Peripheral vessels lose elasticity.`, `Heart responds to increased oxygen demands.`, `Sympathetic nervous system activity decreases.`],
+                correctIndex: [0, 1, 2],
+                rationale: `Aging leads to reduced contractility, rigid valves, and stiff vessels. The heart becomes *less* responsive to oxygen demands.`
+            },
+            {
+                id: 26,
+                question: `The nurse is assessing a young adult client in the allergy clinic. The nurse recognizes that an allergic reaction will cause which of the following cardiac events? Select all that apply.`,
+                options: [`Erythema of the affected areas`, `Rhinitis and runny eyes`, `Swelling of the area`, `Pruritus and hives`, `Bradycardia`],
+                correctIndex: [0, 1, 2, 3],
+                rationale: `Allergic reactions cause vasodilation (erythema), capillary leak (swelling), and histamine release (rhinitis, pruritus). It usually causes tachycardia, not bradycardia.`
+            }
+        ]
+    };
+
+    const app = {
+        currentChapterData: [],
+        currentQuestionIndex: 0,
+        score: { correct: 0, wrong: 0 },
+        wrongQuestions: [],
+        isRemediationMode: false,
+        selectedIndices: [], // Track indices selected by user
+        
+        elements: {
+            select: document.getElementById('chapterSelect'),
+            questionText: document.getElementById('questionText'),
+            optionsContainer: document.getElementById('optionsContainer'),
+            feedbackArea: document.getElementById('feedbackArea'),
+            feedbackTitle: document.getElementById('feedbackTitle'),
+            rationaleText: document.getElementById('rationaleText'),
+            quizArea: document.getElementById('quizArea'),
+            endScreen: document.getElementById('endScreen'),
+            remaining: document.getElementById('remainingCount'),
+            correct: document.getElementById('correctCount'),
+            wrong: document.getElementById('wrongCount'),
+            bar: document.getElementById('progressBar'),
+            remediateBtn: document.getElementById('remediateBtn'),
+            endRemediateBtn: document.getElementById('endRemediateBtn'),
+            modeIndicator: document.getElementById('modeIndicator'),
+            submitBtn: document.getElementById('submitMultiSelectBtn')
+        },
+
+        shuffleArray: function(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        },
+
+        init: function() {
+            try {
+                this.elements.select.innerHTML = '';
+                const chapters = Object.keys(allChapters);
+                if (chapters.length === 0) throw new Error("No chapters found");
+
+                // Add individual chapter options
+                chapters.forEach(chapterName => {
+                    let option = document.createElement('option');
+                    option.value = chapterName;
+                    option.innerText = chapterName;
+                    this.elements.select.appendChild(option);
+                });
+                
+                // Add the new "All Chapters (Random)" option
+                let allOption = document.createElement('option');
+                allOption.value = "All Chapters (Random)";
+                allOption.innerText = "All Chapters (Random)";
+                this.elements.select.appendChild(allOption);
+
+
+                this.elements.select.addEventListener('change', (e) => {
+                    this.loadChapter(e.target.value);
+                });
+
+                this.loadChapter(chapters[0]);
+            } catch (e) {
+                document.getElementById('error-box').classList.remove('hidden');
+                document.getElementById('error-message').innerText = e.message;
+            }
+        },
+
+        loadChapter: function(chapterName) {
+            this.isRemediationMode = false;
+            let questionsToLoad = [];
+            
+            if (chapterName === "All Chapters (Random)") {
+                // Combine all questions from all chapters
+                for (const chap in allChapters) {
+                    // Skip 'Demo Chapter' in the list to be combined if it existed, but we'll include everything here.
+                    questionsToLoad.push(...allChapters[chap]);
+                }
+                // Shuffle the combined array
+                this.currentChapterData = this.shuffleArray(questionsToLoad);
+            } else {
+                // Load a single chapter as before
+                this.currentChapterData = [...allChapters[chapterName]]; 
+            }
+            
+            this.resetState();
+        },
+
+        resetState: function() {
+            this.currentQuestionIndex = 0;
+            this.score = { correct: 0, wrong: 0 };
+            this.wrongQuestions = [];
+            this.selectedIndices = [];
+            
+            this.elements.modeIndicator.classList.add('hidden');
+            this.elements.remediateBtn.classList.add('hidden');
+            this.elements.endScreen.classList.add('hidden');
+            this.elements.quizArea.classList.remove('hidden');
+            this.elements.submitBtn.classList.add('hidden');
+            
+            this.updateStats();
+            this.renderQuestion();
+        },
+
+        resetChapter: function() {
+            const currentVal = this.elements.select.value;
+            this.loadChapter(currentVal);
+        },
+
+        startRemediation: function() {
+            if(this.wrongQuestions.length === 0) return;
+
+            this.isRemediationMode = true;
+            this.currentChapterData = [...this.wrongQuestions]; 
+            this.currentQuestionIndex = 0;
+            this.score = { correct: 0, wrong: 0 };
+            
+            this.elements.modeIndicator.classList.remove('hidden');
+            this.elements.endScreen.classList.add('hidden');
+            this.elements.quizArea.classList.remove('hidden');
+            this.elements.remediateBtn.classList.add('hidden');
+            
+            this.updateStats();
+            this.renderQuestion();
+        },
+        
+        isMultiSelect: function(q) {
+            return Array.isArray(q.correctIndex);
+        },
+
+        toggleSelection: function(button, index) {
+            button.classList.toggle('selected');
+            const indexPos = this.selectedIndices.indexOf(index);
+            
+            if (indexPos > -1) {
+                this.selectedIndices.splice(indexPos, 1); // Deselect
+            } else {
+                this.selectedIndices.push(index); // Select
+            }
+        },
+
+        renderQuestion: function() {
+            const q = this.currentChapterData[this.currentQuestionIndex];
+            const isMultiSelect = this.isMultiSelect(q);
+
+            this.elements.feedbackArea.classList.add('hidden');
+            this.elements.optionsContainer.innerHTML = '';
+            this.selectedIndices = []; // Reset selections
+
+            this.elements.questionText.innerText = `${this.currentQuestionIndex + 1}. ${q.question}`;
+
+            if(isMultiSelect) {
+                this.elements.questionText.innerHTML += ` <span class="text-sm text-orange-600 font-bold block mt-2">(Select all that apply and click SUBMIT)</span>`;
+                this.elements.submitBtn.classList.remove('hidden');
+            } else {
+                this.elements.submitBtn.classList.add('hidden');
+            }
+
+            q.options.forEach((opt, index) => {
+                const btn = document.createElement('button');
+                
+                if (isMultiSelect) {
+                    btn.className = "w-full text-left p-4 rounded border border-gray-300 hover:bg-gray-100 transition bg-white text-gray-700 multi-select-option";
+                    btn.onclick = (function(index) { 
+                        return function() { app.toggleSelection(this, index); };
+                    })(index);
+                } else {
+                    btn.className = "w-full text-left p-4 rounded border border-gray-300 hover:bg-blue-50 transition bg-white text-gray-700";
+                    btn.onclick = () => this.submitAnswer(index); 
+                }
+                
+                btn.innerText = opt;
+                this.elements.optionsContainer.appendChild(btn);
+            });
+
+            this.updateStats();
+        },
+
+        submitAnswer: function(selectedIndex = null) {
+            const q = this.currentChapterData[this.currentQuestionIndex];
+            const isMultiSelect = this.isMultiSelect(q);
+            const options = this.elements.optionsContainer.querySelectorAll('button');
+            
+            let selected = isMultiSelect ? this.selectedIndices.slice().sort((a, b) => a - b) : [selectedIndex];
+            let correctIndices = isMultiSelect ? q.correctIndex.slice().sort((a, b) => a - b) : [q.correctIndex];
+            
+            // Compare selected array to correctIndices array for overall score
+            const arraysEqual = selected.length === correctIndices.length && 
+                                selected.every((value, index) => value === correctIndices[index]);
+            
+            let overallCorrect = arraysEqual;
+
+            // 2. Update Score
+            if (overallCorrect) {
+                this.score.correct++;
+                this.elements.feedbackTitle.innerText = "Correct! 🎉";
+                this.elements.feedbackTitle.className = "font-bold text-lg mb-2 text-green-700";
+            } else {
+                this.score.wrong++;
+                this.elements.feedbackTitle.innerText = "Incorrect ❌";
+                this.elements.feedbackTitle.className = "font-bold text-lg mb-2 text-red-700";
+
+                if (!this.isRemediationMode) {
+                    this.wrongQuestions.push(q);
+                }
+            }
+            
+            // 3. Highlight Feedback
+            options.forEach((button, index) => {
+                const isSelected = selected.includes(index);
+                const isCorrectOption = correctIndices.includes(index);
+                
+                button.disabled = true;
+                button.classList.remove('selected', 'hover:bg-blue-50', 'hover:bg-gray-100');
+                
+                if (isCorrectOption) {
+                    // Mark ALL correct options green
+                    button.classList.add('bg-green-100', 'border-green-500', 'text-green-800');
+                } 
+                
+                if (isSelected && !isCorrectOption) {
+                    // Mark incorrect selections red
+                    button.classList.add('bg-red-100', 'border-red-500', 'text-red-800');
+                }
+            });
+            
+
+            // 4. Final UI Update
+            this.elements.submitBtn.classList.add('hidden');
+            this.elements.rationaleText.innerText = q.rationale;
+            this.elements.feedbackArea.classList.remove('hidden');
+            this.updateStats();
+        },
+
+        nextQuestion: function() {
+            this.currentQuestionIndex++;
+            
+            if (this.currentQuestionIndex < this.currentChapterData.length) {
+                this.renderQuestion();
+            } else {
+                this.showEndScreen();
+            }
+        },
+
+        showEndScreen: function() {
+            this.elements.quizArea.classList.add('hidden');
+            this.elements.endScreen.classList.remove('hidden');
+
+            if (!this.isRemediationMode && this.wrongQuestions.length > 0) {
+                this.elements.endRemediateBtn.classList.remove('hidden');
+                this.elements.remediateBtn.classList.remove('hidden');
+            } else {
+                this.elements.endRemediateBtn.classList.add('hidden');
+            }
+        },
+
+        updateStats: function() {
+            const total = this.currentChapterData.length;
+            const remaining = total - this.currentQuestionIndex;
+            const progress = ((this.currentQuestionIndex) / total) * 100;
+
+            this.elements.remaining.innerText = remaining;
+            this.elements.correct.innerText = this.score.correct;
+            this.elements.wrong.innerText = this.score.wrong;
+            this.elements.bar.style.width = `${progress}%`;
+        }
+    };
+
+    app.init();
+    </script>
+</body>
+</html>
